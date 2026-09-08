@@ -2,6 +2,7 @@ const { randomUUID } = require('node:crypto');
 const { get, run, withTransaction } = require('../database/connection');
 const { AppError } = require('../utils/errors');
 const { decimalToCents } = require('../utils/money');
+const { buildSaleExternalReference } = require('./MercadoPagoProvider');
 
 class PaymentService {
   constructor(db, saleService, cashRegisterService, provider, env, terminalService) {
@@ -28,12 +29,13 @@ class PaymentService {
     }
 
     const mercadoPagoPaymentType = this.mapPaymentMethod(paymentMethod);
-    const order = await this.provider.createPointOrder({
+    const externalReference = this.ensureSaleExternalReference(sale);
+    const order = await this.provider.createPointCharge({
       amountCents: sale.total_cents,
-      externalReference: sale.external_reference,
+      saleId: sale.id,
       idempotencyKey: sale.idempotency_key,
-      mercadoPagoPaymentType,
-      description: `Venda ${sale.external_reference}`,
+      paymentType: mercadoPagoPaymentType,
+      description: `Venda ${externalReference}`,
       terminalId: this.getConfiguredTerminalId(),
     });
 
@@ -68,21 +70,21 @@ class PaymentService {
   assertCanStart(paymentMethod) {
     this.mapPaymentMethod(String(paymentMethod || '').toUpperCase());
 
-    if (!this.env.MERCADOPAGO_ACCESS_TOKEN) {
+    if (!this.env.MERCADO_PAGO_ACCESS_TOKEN) {
       throw new AppError(
-        'Configure MERCADOPAGO_ACCESS_TOKEN no backend antes de chamar o Mercado Pago.',
+        'Configure MERCADO_PAGO_ACCESS_TOKEN no backend antes de chamar o Mercado Pago.',
         400,
-        'MERCADOPAGO_ACCESS_TOKEN_REQUIRED',
+        'MERCADO_PAGO_ACCESS_TOKEN_REQUIRED',
       );
     }
 
     if (!this.getConfiguredTerminalId()) {
-      throw new AppError('Configure MERCADOPAGO_TERMINAL_ID no backend.', 400, 'TERMINAL_ID_REQUIRED');
+      throw new AppError('Configure MERCADO_PAGO_TERMINAL_ID no backend.', 400, 'TERMINAL_ID_REQUIRED');
     }
   }
 
   getConfiguredTerminalId() {
-    return this.terminalService?.getActiveTerminalId() || this.env.MERCADOPAGO_TERMINAL_ID;
+    return this.terminalService?.getActiveTerminalId() || this.env.MERCADO_PAGO_TERMINAL_ID;
   }
 
   async syncSalePaymentStatus(saleId) {
@@ -118,8 +120,8 @@ class PaymentService {
     const providerOrderId = order?.id;
     const externalReference = order?.external_reference;
     let sale =
-      (providerOrderId && this.saleService.getSaleByProviderOrderId(providerOrderId)) ||
-      (externalReference && this.saleService.getSaleByExternalReference(externalReference));
+      (externalReference && this.saleService.getSaleByExternalReference(externalReference)) ||
+      (providerOrderId && this.saleService.getSaleByProviderOrderId(providerOrderId));
 
     if (!sale) {
       sale = this.createSaleFromProviderOrder(order);
@@ -243,6 +245,17 @@ class PaymentService {
       upsertTerminalFromOrder(this.db, order);
       return this.saleService.getSale(saleResult.lastInsertRowid);
     });
+  }
+
+  ensureSaleExternalReference(sale) {
+    const externalReference = buildSaleExternalReference(sale.id);
+    if (sale.external_reference === externalReference) return externalReference;
+
+    run(this.db, 'UPDATE sales SET external_reference = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?', [
+      externalReference,
+      sale.id,
+    ]);
+    return externalReference;
   }
 
   approveSale(currentSale, transactionId) {

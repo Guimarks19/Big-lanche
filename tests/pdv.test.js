@@ -76,6 +76,17 @@ class FakeMercadoPagoProvider {
     return order;
   }
 
+  async createPointCharge(input) {
+    return this.createPointOrder({
+      amountCents: input.amountCents,
+      externalReference: `VENDA_${input.saleId}`,
+      idempotencyKey: input.idempotencyKey,
+      mercadoPagoPaymentType: input.paymentType || 'credit_card',
+      terminalId: input.terminalId,
+      description: input.description,
+    });
+  }
+
   async getOrder(orderId) {
     const order = this.orders.get(orderId);
     if (!order) throw new MercadoPagoError('Order nao encontrada.', 404, 'order_not_found');
@@ -119,8 +130,8 @@ function setup(env = {}, options = {}) {
     envFilePath: options.envFilePath,
     env: {
       NODE_ENV: 'test',
-      MERCADOPAGO_ACCESS_TOKEN: 'TEST_TOKEN',
-      MERCADOPAGO_TERMINAL_ID: 'NEWLAND_N950__SBX0000001',
+      MERCADO_PAGO_ACCESS_TOKEN: 'TEST_TOKEN',
+      MERCADO_PAGO_TERMINAL_ID: 'NEWLAND_N950__SBX0000001',
       MERCADOPAGO_WEBHOOK_SIGNATURE_REQUIRED: 'false',
       MERCADOPAGO_ENABLE_QR: 'true',
       ...env,
@@ -210,6 +221,7 @@ test('cria uma venda pendente somente por valor', async (t) => {
   assert.equal(sale.status, 'PENDING');
   assert.equal(sale.total_cents, 1500);
   assert.equal(sale.items.length, 0);
+  assert.equal(sale.external_reference, `VENDA_${sale.id}`);
 });
 
 test('checkout automatico cria venda e envia cobranca em uma unica chamada', async (t) => {
@@ -225,12 +237,13 @@ test('checkout automatico cria venda e envia cobranca em uma unica chamada', asy
   assert.equal(response.body.sale.status, 'PENDING');
   assert.equal(response.body.sale.provider_order_id, 'ORD_TEST_1');
   assert.equal(provider.lastCreatedOrderInput.terminalId, 'NEWLAND_N950__SBX0000001');
+  assert.equal(provider.lastCreatedOrderInput.externalReference, `VENDA_${response.body.sale.id}`);
   assert.equal(get(db, 'SELECT COUNT(*) AS count FROM sales').count, 1);
   assert.equal(get(db, 'SELECT COUNT(*) AS count FROM payments').count, 1);
 });
 
 test('cadastro local da maquininha passa a ser usado nas cobrancas', async (t) => {
-  const { db, http, provider } = setup({ MERCADOPAGO_TERMINAL_ID: '' });
+  const { db, http, provider } = setup({ MERCADO_PAGO_TERMINAL_ID: '' });
   t.after(() => db.close());
 
   const terminal = await http
@@ -261,12 +274,12 @@ test('salva credenciais Mercado Pago no backend com retorno mascarado', async (t
   const envFilePath = createTempEnvFile(t);
   const { db, http } = setup(
     {
-      MERCADOPAGO_PUBLIC_KEY: '',
-      MERCADOPAGO_ACCESS_TOKEN: '',
-      MERCADOPAGO_CLIENT_ID: '',
-      MERCADOPAGO_CLIENT_SECRET: '',
-      MERCADOPAGO_WEBHOOK_SECRET: '',
-      MERCADOPAGO_TERMINAL_ID: '',
+      MERCADO_PAGO_PUBLIC_KEY: '',
+      MERCADO_PAGO_ACCESS_TOKEN: '',
+      MERCADO_PAGO_CLIENT_ID: '',
+      MERCADO_PAGO_CLIENT_SECRET: '',
+      MERCADO_PAGO_WEBHOOK_SECRET: '',
+      MERCADO_PAGO_TERMINAL_ID: '',
     },
     { envFilePath },
   );
@@ -288,8 +301,8 @@ test('salva credenciais Mercado Pago no backend com retorno mascarado', async (t
   assert.equal(response.body.terminal.provider_terminal_id, 'NEWLAND_N950__SERIAL_CFG');
 
   const envFile = fs.readFileSync(envFilePath, 'utf8');
-  assert.match(envFile, /MERCADOPAGO_ACCESS_TOKEN=APP_USR_ACCESS_TEST_TOKEN/);
-  assert.match(envFile, /MERCADOPAGO_CLIENT_SECRET=CLIENT_SECRET_TEST/);
+  assert.match(envFile, /MERCADO_PAGO_ACCESS_TOKEN=APP_USR_ACCESS_TEST_TOKEN/);
+  assert.match(envFile, /MERCADO_PAGO_CLIENT_SECRET=CLIENT_SECRET_TEST/);
 
   const config = await http.get('/api/config');
   assert.equal(config.body.mercadopago.terminal_configured, true);
@@ -430,7 +443,7 @@ test('webhook repetido de venda direta nao duplica venda nem caixa', async (t) =
     .send({ action: 'order.processed', type: 'order', data: { id: 'ORD_DIRECT_DUP' } });
 
   assert.equal(second.status, 200);
-  assert.equal(second.body.sale.status, 'APPROVED');
+  assert.equal(second.body.duplicate, true);
   assert.equal(get(db, 'SELECT COUNT(*) AS count FROM sales').count, 1);
   assert.equal(get(db, 'SELECT COUNT(*) AS count FROM payments').count, 1);
   assert.equal(get(db, "SELECT COUNT(*) AS count FROM cash_movements WHERE type = 'SALE'").count, 1);

@@ -23,18 +23,29 @@ function resolveProjectPath(value, fallback) {
 
 function loadEnv(overrides = {}) {
   const merged = { ...process.env, ...overrides };
+  const mercadoPagoPublicKey = merged.MERCADO_PAGO_PUBLIC_KEY || '';
+  const mercadoPagoAccessToken = merged.MERCADO_PAGO_ACCESS_TOKEN || '';
+  const mercadoPagoClientId = merged.MERCADO_PAGO_CLIENT_ID || '';
+  const mercadoPagoClientSecret = merged.MERCADO_PAGO_CLIENT_SECRET || '';
+  const mercadoPagoWebhookSecret = merged.MERCADO_PAGO_WEBHOOK_SECRET || '';
+  const mercadoPagoTerminalId = merged.MERCADO_PAGO_TERMINAL_ID || '';
 
   return {
     NODE_ENV: merged.NODE_ENV || 'development',
     PORT: intFromEnv(merged.PORT, 3000),
     DATABASE_PATH: resolveProjectPath(merged.DATABASE_PATH, 'backend/data/pdv.sqlite'),
-    MERCADOPAGO_PUBLIC_KEY: merged.MERCADOPAGO_PUBLIC_KEY || merged.MERCADO_PAGO_PUBLIC_KEY || '',
-    MERCADOPAGO_ACCESS_TOKEN: merged.MERCADOPAGO_ACCESS_TOKEN || merged.MERCADO_PAGO_ACCESS_TOKEN || '',
-    MERCADOPAGO_CLIENT_ID: merged.MERCADOPAGO_CLIENT_ID || merged.MERCADO_PAGO_CLIENT_ID || '',
-    MERCADOPAGO_CLIENT_SECRET: merged.MERCADOPAGO_CLIENT_SECRET || merged.MERCADO_PAGO_CLIENT_SECRET || '',
-    MERCADOPAGO_WEBHOOK_SECRET:
-      merged.MERCADOPAGO_WEBHOOK_SECRET || merged.MERCADO_PAGO_WEBHOOK_SECRET || '',
-    MERCADOPAGO_TERMINAL_ID: merged.MERCADOPAGO_TERMINAL_ID || merged.MERCADO_PAGO_TERMINAL_ID || '',
+    MERCADO_PAGO_PUBLIC_KEY: mercadoPagoPublicKey,
+    MERCADO_PAGO_ACCESS_TOKEN: mercadoPagoAccessToken,
+    MERCADO_PAGO_CLIENT_ID: mercadoPagoClientId,
+    MERCADO_PAGO_CLIENT_SECRET: mercadoPagoClientSecret,
+    MERCADO_PAGO_WEBHOOK_SECRET: mercadoPagoWebhookSecret,
+    MERCADO_PAGO_TERMINAL_ID: mercadoPagoTerminalId,
+    MERCADOPAGO_PUBLIC_KEY: mercadoPagoPublicKey,
+    MERCADOPAGO_ACCESS_TOKEN: mercadoPagoAccessToken,
+    MERCADOPAGO_CLIENT_ID: mercadoPagoClientId,
+    MERCADOPAGO_CLIENT_SECRET: mercadoPagoClientSecret,
+    MERCADOPAGO_WEBHOOK_SECRET: mercadoPagoWebhookSecret,
+    MERCADOPAGO_TERMINAL_ID: mercadoPagoTerminalId,
     MERCADOPAGO_API_BASE_URL: merged.MERCADOPAGO_API_BASE_URL || 'https://api.mercadopago.com',
     MERCADOPAGO_CARD_DEFAULT_TYPE: merged.MERCADOPAGO_CARD_DEFAULT_TYPE || 'credit_card',
     MERCADOPAGO_DEFAULT_INSTALLMENTS: intFromEnv(merged.MERCADOPAGO_DEFAULT_INSTALLMENTS, 1),

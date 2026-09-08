@@ -60,32 +60,25 @@ README.md
 As credenciais ficam apenas no backend. Nunca coloque Access Token no frontend.
 
 ```env
-MERCADOPAGO_PUBLIC_KEY=
-MERCADOPAGO_ACCESS_TOKEN=
-MERCADOPAGO_CLIENT_ID=
-MERCADOPAGO_CLIENT_SECRET=
-MERCADOPAGO_WEBHOOK_SECRET=
-MERCADOPAGO_TERMINAL_ID=
+MERCADO_PAGO_PUBLIC_KEY=
+MERCADO_PAGO_ACCESS_TOKEN=
+MERCADO_PAGO_CLIENT_ID=
+MERCADO_PAGO_CLIENT_SECRET=
+MERCADO_PAGO_WEBHOOK_SECRET=
+MERCADO_PAGO_TERMINAL_ID=
 MERCADOPAGO_CARD_DEFAULT_TYPE=credit_card
 MERCADOPAGO_ENABLE_QR=false
 ```
 
-`MERCADOPAGO_TERMINAL_ID` deve usar o ID retornado por `GET /terminals/v1/list`, por exemplo `NEWLAND_N950__SBX0000001` em teste.
-
-O backend tambem aceita estes aliases, se voce preferir:
-
-```env
-MERCADO_PAGO_ACCESS_TOKEN=
-MERCADO_PAGO_WEBHOOK_SECRET=
-```
+`MERCADO_PAGO_TERMINAL_ID` deve usar o ID retornado por `GET /terminals/v1/list`, por exemplo `NEWLAND_N950__SBX0000001` em teste.
 
 Pela documentacao oficial, `Access Token` e `Client Secret` sao chaves privadas e ficam somente no backend. A tela do PDV envia esses valores para `PUT /api/mercadopago/credentials`, o backend grava no `.env` e a interface passa a mostrar apenas valores mascarados.
 
 Para enviar cobrancas para a Point Smart da propria conta, o fluxo usa principalmente:
 
-- `MERCADOPAGO_ACCESS_TOKEN`
-- `MERCADOPAGO_TERMINAL_ID`
-- `MERCADOPAGO_WEBHOOK_SECRET`
+- `MERCADO_PAGO_ACCESS_TOKEN`
+- `MERCADO_PAGO_TERMINAL_ID`
+- `MERCADO_PAGO_WEBHOOK_SECRET`
 
 `Public Key`, `Client ID` e `Client Secret` ficam cadastrados para completar a configuracao da aplicacao e preparar fluxos futuros, como OAuth, mas nao sao necessarios para criar uma order Point da propria conta.
 
@@ -132,7 +125,7 @@ NEWLAND_N950__N950NCB801293324
 
 Os ultimos caracteres devem bater com o serial da maquininha fisica.
 
-Tambem e possivel clicar em `Sincronizar` na aba `Vendas`, desde que `MERCADOPAGO_ACCESS_TOKEN` esteja preenchido. O sistema busca os terminais da sua conta pelo endpoint oficial e permite escolher um.
+Tambem e possivel clicar em `Sincronizar` na aba `Vendas`, desde que `MERCADO_PAGO_ACCESS_TOKEN` esteja preenchido. O sistema busca os terminais da sua conta pelo endpoint oficial e permite escolher um.
 
 ## Como testar automatizado
 
@@ -147,19 +140,19 @@ Os testes usam um provider falso para simular respostas oficiais da Orders API s
 No painel do Mercado Pago, em `Webhooks > Configurar notificacoes`, selecione o evento `Order (Mercado Pago)` e informe a URL publica HTTPS do backend:
 
 ```text
-https://seu-dominio-publico/api/mercadopago/webhook
+https://big-lanche.onrender.com/api/mercadopago/webhook
 ```
 
 Exemplos validos:
 
 ```text
 https://api.big-lanche2.com/api/mercadopago/webhook
-https://big-lanche2.onrender.com/api/mercadopago/webhook
+https://big-lanche.onrender.com/api/mercadopago/webhook
 ```
 
 Nao use o link do GitHub. O GitHub guarda o codigo, mas nao executa sua rota `POST`.
 
-O Mercado Pago envia a notificacao por `HTTPS POST`. A rota valida a assinatura com `x-signature`, `x-request-id`, `data.id` e `MERCADOPAGO_WEBHOOK_SECRET`; depois consulta `GET /v1/orders/{order_id}` com o `Access Token`, confirma o status real e grava a venda.
+O Mercado Pago envia a notificacao por `HTTPS POST`. A rota valida a assinatura com `x-signature`, `x-request-id`, `data.id` e `MERCADO_PAGO_WEBHOOK_SECRET`; depois consulta `GET /v1/orders/{order_id}` com `MERCADO_PAGO_ACCESS_TOKEN`, confirma o status real e grava a venda.
 
 ## Como testar com Mercado Pago sem cobrança real
 
@@ -167,7 +160,7 @@ O Mercado Pago envia a notificacao por `HTTPS POST`. A rota valida a assinatura 
 2. Use as credenciais de teste no `.env`.
 3. Configure/crie loja e caixa conforme a documentacao oficial.
 4. Associe o terminal de teste ou use o serial sandbox `SBX0000001`, quando disponivel para sua conta.
-5. Configure `MERCADOPAGO_TERMINAL_ID`.
+5. Configure `MERCADO_PAGO_TERMINAL_ID`.
 6. Configure o Webhook no topico `Order (Mercado Pago)` apontando para:
 
 ```text

@@ -10,7 +10,7 @@ class TerminalService {
 
   getActiveTerminalId() {
     const setting = get(this.db, "SELECT value FROM app_settings WHERE key = 'mercadopago.active_terminal_id'");
-    return setting?.value || this.env.MERCADOPAGO_TERMINAL_ID || '';
+    return setting?.value || this.env.MERCADO_PAGO_TERMINAL_ID || '';
   }
 
   getCurrentTerminal() {

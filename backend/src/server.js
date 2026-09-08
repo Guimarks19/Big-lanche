@@ -1,8 +1,8 @@
 const { createApp } = require('./app');
 
 const app = createApp({ seed: true });
-const { PORT } = app.locals.env;
+const port = process.env.PORT || app.locals.env.PORT || 3000;
 
-app.listen(PORT, () => {
-  console.log(`PDV Mercado Pago rodando em http://localhost:${PORT}`);
+app.listen(port, () => {
+  console.log(`PDV Mercado Pago rodando na porta ${port}`);
 });

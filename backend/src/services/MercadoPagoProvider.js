@@ -33,9 +33,9 @@ class MercadoPagoProvider {
   }
 
   async createPointOrder(input) {
-    const terminalId = input.terminalId || this.env.MERCADOPAGO_TERMINAL_ID;
+    const terminalId = input.terminalId || this.env.MERCADO_PAGO_TERMINAL_ID;
     if (!terminalId) {
-      throw new AppError('Configure MERCADOPAGO_TERMINAL_ID no backend.', 400, 'TERMINAL_ID_REQUIRED');
+      throw new AppError('Configure MERCADO_PAGO_TERMINAL_ID no backend.', 400, 'TERMINAL_ID_REQUIRED');
     }
 
     const paymentMethod = {
@@ -75,6 +75,17 @@ class MercadoPagoProvider {
     });
   }
 
+  async createPointCharge({ amountCents, saleId, terminalId, idempotencyKey, paymentType, description }) {
+    return this.createPointOrder({
+      amountCents,
+      externalReference: buildSaleExternalReference(saleId),
+      idempotencyKey,
+      mercadoPagoPaymentType: paymentType || 'credit_card',
+      description: description || `Venda ${saleId}`,
+      terminalId,
+    });
+  }
+
   async getOrder(orderId) {
     return this.request(`/v1/orders/${encodeURIComponent(orderId)}`, { method: 'GET' });
   }
@@ -102,9 +113,9 @@ class MercadoPagoProvider {
 
   validateWebhookSignature({ xSignature, xRequestId, dataId }) {
     if (!this.env.MERCADOPAGO_WEBHOOK_SIGNATURE_REQUIRED) return;
-    if (!this.env.MERCADOPAGO_WEBHOOK_SECRET) {
+    if (!this.env.MERCADO_PAGO_WEBHOOK_SECRET) {
       throw new AppError(
-        'Configure MERCADOPAGO_WEBHOOK_SECRET para validar Webhooks.',
+        'Configure MERCADO_PAGO_WEBHOOK_SECRET para validar Webhooks.',
         500,
         'WEBHOOK_SECRET_REQUIRED',
       );
@@ -114,7 +125,7 @@ class MercadoPagoProvider {
       xSignature,
       xRequestId,
       dataId,
-      secret: this.env.MERCADOPAGO_WEBHOOK_SECRET,
+      secret: this.env.MERCADO_PAGO_WEBHOOK_SECRET,
     });
   }
 
@@ -124,7 +135,7 @@ class MercadoPagoProvider {
     const response = await this.fetch(`${this.env.MERCADOPAGO_API_BASE_URL}${path}`, {
       method,
       headers: {
-        Authorization: `Bearer ${this.env.MERCADOPAGO_ACCESS_TOKEN}`,
+        Authorization: `Bearer ${this.env.MERCADO_PAGO_ACCESS_TOKEN}`,
         'Content-Type': 'application/json',
         ...(idempotencyKey ? { 'X-Idempotency-Key': idempotencyKey } : {}),
       },
@@ -147,14 +158,22 @@ class MercadoPagoProvider {
   }
 
   ensureAccessToken() {
-    if (!this.env.MERCADOPAGO_ACCESS_TOKEN) {
+    if (!this.env.MERCADO_PAGO_ACCESS_TOKEN) {
       throw new AppError(
-        'Configure MERCADOPAGO_ACCESS_TOKEN no backend antes de chamar o Mercado Pago.',
+        'Configure MERCADO_PAGO_ACCESS_TOKEN no backend antes de chamar o Mercado Pago.',
         400,
-        'MERCADOPAGO_ACCESS_TOKEN_REQUIRED',
+        'MERCADO_PAGO_ACCESS_TOKEN_REQUIRED',
       );
     }
   }
+}
+
+function buildSaleExternalReference(saleId) {
+  const normalized = Number(saleId);
+  if (!Number.isInteger(normalized) || normalized <= 0) {
+    throw new AppError('ID da venda invalido para external_reference.', 400, 'INVALID_SALE_ID');
+  }
+  return `VENDA_${normalized}`;
 }
 
 function tryParseJson(raw) {
@@ -166,6 +185,7 @@ function tryParseJson(raw) {
 }
 
 module.exports = {
+  buildSaleExternalReference,
   InvalidWebhookSignatureError,
   MercadoPagoProvider,
 };

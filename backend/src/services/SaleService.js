@@ -2,6 +2,7 @@ const { randomUUID } = require('node:crypto');
 const { all, get, run, withTransaction } = require('../database/connection');
 const { AppError } = require('../utils/errors');
 const { decimalToCents } = require('../utils/money');
+const { buildSaleExternalReference } = require('./MercadoPagoProvider');
 
 class SaleService {
   constructor(db, cashRegisterService) {
@@ -15,7 +16,7 @@ class SaleService {
 
     return withTransaction(this.db, () => {
       const cashRegister = this.cashRegisterService.ensureOpen();
-      const externalReference = `SALE_${randomUUID().replace(/-/g, '').slice(0, 24)}`;
+      const temporaryExternalReference = `SALE_${randomUUID().replace(/-/g, '').slice(0, 24)}`;
       const idempotencyKey = randomUUID();
 
       const saleResult = run(
@@ -23,8 +24,14 @@ class SaleService {
         `INSERT INTO sales
          (total_cents, status, payment_method, external_reference, idempotency_key, cash_register_id)
          VALUES (?, 'PENDING', ?, ?, ?, ?)`,
-        [totalCents, paymentMethod, externalReference, idempotencyKey, cashRegister.id],
+        [totalCents, paymentMethod, temporaryExternalReference, idempotencyKey, cashRegister.id],
       );
+
+      const externalReference = buildSaleExternalReference(saleResult.lastInsertRowid);
+      run(this.db, 'UPDATE sales SET external_reference = ? WHERE id = ?', [
+        externalReference,
+        saleResult.lastInsertRowid,
+      ]);
 
       return this.getSale(saleResult.lastInsertRowid);
     });

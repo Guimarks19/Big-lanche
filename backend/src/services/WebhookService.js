@@ -65,6 +65,19 @@ class WebhookService {
   }
 
   registerEvent({ dataId, action, resourceType, requestId, body }) {
+    const processedSameAction = get(
+      this.db,
+      `SELECT * FROM webhook_events
+       WHERE provider = ?
+         AND data_id = ?
+         AND action = ?
+         AND status = 'PROCESSED'
+       ORDER BY id DESC
+       LIMIT 1`,
+      ['mercadopago', dataId, action],
+    );
+    if (processedSameAction) return { ...processedSameAction, duplicate: true };
+
     const eventKey = [requestId || body?.id || 'no-request-id', dataId, action].join(':');
     const existing = get(
       this.db,

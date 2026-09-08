@@ -4,13 +4,22 @@ const { AppError } = require('../utils/errors');
 const { rootDir } = require('../config/env');
 
 const MERCADO_PAGO_KEYS = [
-  'MERCADOPAGO_PUBLIC_KEY',
-  'MERCADOPAGO_ACCESS_TOKEN',
-  'MERCADOPAGO_CLIENT_ID',
-  'MERCADOPAGO_CLIENT_SECRET',
-  'MERCADOPAGO_WEBHOOK_SECRET',
-  'MERCADOPAGO_TERMINAL_ID',
+  'MERCADO_PAGO_PUBLIC_KEY',
+  'MERCADO_PAGO_ACCESS_TOKEN',
+  'MERCADO_PAGO_CLIENT_ID',
+  'MERCADO_PAGO_CLIENT_SECRET',
+  'MERCADO_PAGO_WEBHOOK_SECRET',
+  'MERCADO_PAGO_TERMINAL_ID',
 ];
+
+const INTERNAL_ENV_ALIASES = {
+  MERCADO_PAGO_PUBLIC_KEY: 'MERCADOPAGO_PUBLIC_KEY',
+  MERCADO_PAGO_ACCESS_TOKEN: 'MERCADOPAGO_ACCESS_TOKEN',
+  MERCADO_PAGO_CLIENT_ID: 'MERCADOPAGO_CLIENT_ID',
+  MERCADO_PAGO_CLIENT_SECRET: 'MERCADOPAGO_CLIENT_SECRET',
+  MERCADO_PAGO_WEBHOOK_SECRET: 'MERCADOPAGO_WEBHOOK_SECRET',
+  MERCADO_PAGO_TERMINAL_ID: 'MERCADOPAGO_TERMINAL_ID',
+};
 
 class CredentialService {
   constructor(env, options = {}) {
@@ -20,24 +29,24 @@ class CredentialService {
 
   getStatus() {
     return {
-      public_key: this.describeKey('MERCADOPAGO_PUBLIC_KEY'),
-      access_token: this.describeKey('MERCADOPAGO_ACCESS_TOKEN'),
-      client_id: this.describeKey('MERCADOPAGO_CLIENT_ID'),
-      client_secret: this.describeKey('MERCADOPAGO_CLIENT_SECRET'),
-      webhook_secret: this.describeKey('MERCADOPAGO_WEBHOOK_SECRET'),
-      terminal_id: this.describeKey('MERCADOPAGO_TERMINAL_ID'),
+      public_key: this.describeKey('MERCADO_PAGO_PUBLIC_KEY'),
+      access_token: this.describeKey('MERCADO_PAGO_ACCESS_TOKEN'),
+      client_id: this.describeKey('MERCADO_PAGO_CLIENT_ID'),
+      client_secret: this.describeKey('MERCADO_PAGO_CLIENT_SECRET'),
+      webhook_secret: this.describeKey('MERCADO_PAGO_WEBHOOK_SECRET'),
+      terminal_id: this.describeKey('MERCADO_PAGO_TERMINAL_ID'),
     };
   }
 
   save(input = {}) {
     const nextValues = {};
     const fieldMap = {
-      public_key: 'MERCADOPAGO_PUBLIC_KEY',
-      access_token: 'MERCADOPAGO_ACCESS_TOKEN',
-      client_id: 'MERCADOPAGO_CLIENT_ID',
-      client_secret: 'MERCADOPAGO_CLIENT_SECRET',
-      webhook_secret: 'MERCADOPAGO_WEBHOOK_SECRET',
-      terminal_id: 'MERCADOPAGO_TERMINAL_ID',
+      public_key: 'MERCADO_PAGO_PUBLIC_KEY',
+      access_token: 'MERCADO_PAGO_ACCESS_TOKEN',
+      client_id: 'MERCADO_PAGO_CLIENT_ID',
+      client_secret: 'MERCADO_PAGO_CLIENT_SECRET',
+      webhook_secret: 'MERCADO_PAGO_WEBHOOK_SECRET',
+      terminal_id: 'MERCADO_PAGO_TERMINAL_ID',
     };
 
     for (const [field, key] of Object.entries(fieldMap)) {
@@ -52,7 +61,7 @@ class CredentialService {
     }
 
     for (const [key, value] of Object.entries(nextValues)) {
-      this.env[key] = value;
+      setEnvValue(this.env, key, value);
     }
 
     writeEnvValues(this.envFilePath, nextValues);
@@ -75,6 +84,12 @@ function sanitizeEnvValue(value) {
 function maskValue(value) {
   if (value.length <= 8) return '********';
   return `${value.slice(0, 4)}...${value.slice(-4)}`;
+}
+
+function setEnvValue(env, key, value) {
+  env[key] = value;
+  const alias = INTERNAL_ENV_ALIASES[key];
+  if (alias) env[alias] = value;
 }
 
 function writeEnvValues(envFilePath, values) {
