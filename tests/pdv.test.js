@@ -6,7 +6,7 @@ const path = require('node:path');
 const request = require('supertest');
 const { createApp } = require('../backend/src/app');
 const { createDatabase, get } = require('../backend/src/database/connection');
-const { MercadoPagoError } = require('../backend/src/utils/errors');
+const { AppError, MercadoPagoError } = require('../backend/src/utils/errors');
 const { centsToDecimal } = require('../backend/src/utils/money');
 
 class FakeMercadoPagoProvider {
@@ -16,9 +16,12 @@ class FakeMercadoPagoProvider {
     this.counter = 1;
     this.lastCreatedOrderInput = null;
     this.getOrderCalls = [];
+    this.validateError = null;
   }
 
-  validateWebhookSignature() {}
+  validateWebhookSignature() {
+    if (this.validateError) throw this.validateError;
+  }
 
   async listTerminals() {
     return {
@@ -472,6 +475,57 @@ test('webhook do simulador com data.id numerico retorna 200 sem consultar order 
   assert.equal(response.body.ignored, true);
   assert.equal(response.body.simulation, true);
   assert.equal(response.body.reason, 'SIMULATED_ORDER_ID');
+  assert.deepEqual(provider.getOrderCalls, []);
+  assert.equal(get(db, 'SELECT COUNT(*) AS count FROM sales').count, 0);
+});
+
+test('webhook do simulador aceita type e data.id somente pela query string', async (t) => {
+  const { db, http, provider } = setup();
+  t.after(() => db.close());
+
+  const response = await http
+    .post('/api/mercadopago/webhook?data.id=123456&type=order')
+    .set('x-request-id', 'request-simulator-query-only')
+    .send();
+
+  assert.equal(response.status, 200);
+  assert.equal(response.body.ignored, true);
+  assert.equal(response.body.simulation, true);
+  assert.equal(response.body.reason, 'SIMULATED_ORDER_ID');
+  assert.deepEqual(provider.getOrderCalls, []);
+  assert.equal(get(db, 'SELECT COUNT(*) AS count FROM sales').count, 0);
+});
+
+test('webhook do simulador nao falha quando assinatura nao pode ser validada localmente', async (t) => {
+  const { db, http, provider } = setup();
+  t.after(() => db.close());
+  provider.validateError = new AppError(
+    'Configure MERCADO_PAGO_WEBHOOK_SECRET para validar Webhooks.',
+    500,
+    'WEBHOOK_SECRET_REQUIRED',
+  );
+
+  const response = await http
+    .post('/api/mercadopago/webhook?data.id=123456&type=order')
+    .set('x-request-id', 'request-simulator-missing-secret')
+    .send();
+
+  assert.equal(response.status, 200);
+  assert.equal(response.body.simulation, true);
+  assert.deepEqual(provider.getOrderCalls, []);
+});
+
+test('webhook sem body e sem orderId retorna 200', async (t) => {
+  const { db, http, provider } = setup();
+  t.after(() => db.close());
+
+  const response = await http
+    .post('/api/mercadopago/webhook?type=order')
+    .set('x-request-id', 'request-no-order-id')
+    .send();
+
+  assert.equal(response.status, 200);
+  assert.deepEqual(response.body, { received: true });
   assert.deepEqual(provider.getOrderCalls, []);
   assert.equal(get(db, 'SELECT COUNT(*) AS count FROM sales').count, 0);
 });

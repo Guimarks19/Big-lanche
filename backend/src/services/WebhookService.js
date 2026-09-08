@@ -10,13 +10,51 @@ class WebhookService {
   }
 
   async handleMercadoPago(req) {
-    const signatureDataId = extractSignatureDataId(req);
-    const dataId = extractProcessableOrderId(req);
+    const webhookPayload = extractWebhookPayload(req);
+    const { type, orderId, signatureDataId, embeddedOrder } = webhookPayload;
+    const dataId = orderId;
     const action = req.body?.action || req.query?.action || 'unknown';
-    const bodyType = req.body?.type || 'unknown';
-    const resourceType = bodyType || req.query?.type || 'unknown';
+    const resourceType = type || 'unknown';
     const requestId = req.headers['x-request-id'] || null;
-    const embeddedOrder = extractEmbeddedOrder(req.body);
+
+    if (!orderId) {
+      console.info('[MercadoPagoWebhook] Notificacao recebida sem orderId.', {
+        action,
+        type,
+        request_id: requestId,
+      });
+      return { received: true };
+    }
+
+    if (type !== 'order') {
+      console.info('[MercadoPagoWebhook] Notificacao ignorada: type diferente de order.', {
+        action,
+        type,
+        order_id: orderId,
+        request_id: requestId,
+      });
+      return { received: true, ignored: true, reason: 'UNSUPPORTED_WEBHOOK_TYPE' };
+    }
+
+    if (!isMercadoPagoOrderId(dataId)) {
+      const event = this.registerEvent({
+        dataId,
+        action,
+        resourceType,
+        requestId,
+        body: req.body,
+      });
+
+      console.info('[MercadoPagoWebhook] Simulacao recebida sem ID real de order.', {
+        action,
+        data_id: dataId,
+        embedded_status: embeddedOrder?.status || null,
+        embedded_external_reference: embeddedOrder?.external_reference || null,
+        request_id: requestId,
+      });
+      this.markEvent(event.id, 'IGNORED', `Simulacao sem order real: ${dataId}`);
+      return { received: true, ignored: true, simulation: true, reason: 'SIMULATED_ORDER_ID' };
+    }
 
     try {
       this.provider.validateWebhookSignature({
@@ -36,15 +74,6 @@ class WebhookService {
       throw error;
     }
 
-    if (!dataId) {
-      console.info('[MercadoPagoWebhook] Notificacao ignorada sem data.id.', {
-        action,
-        body_type: bodyType,
-        request_id: requestId,
-      });
-      return { received: true, ignored: true, reason: 'WEBHOOK_DATA_ID_REQUIRED' };
-    }
-
     const event = this.registerEvent({
       dataId,
       action,
@@ -60,29 +89,6 @@ class WebhookService {
         request_id: requestId,
       });
       return { received: true, duplicate: true };
-    }
-
-    if (bodyType !== 'order') {
-      console.info('[MercadoPagoWebhook] Notificacao ignorada: body.type diferente de order.', {
-        action,
-        body_type: bodyType,
-        data_id: dataId,
-        request_id: requestId,
-      });
-      this.markEvent(event.id, 'IGNORED');
-      return { received: true, ignored: true, reason: 'UNSUPPORTED_WEBHOOK_TYPE' };
-    }
-
-    if (!isMercadoPagoOrderId(dataId)) {
-      console.info('[MercadoPagoWebhook] Simulacao recebida sem ID real de order.', {
-        action,
-        data_id: dataId,
-        embedded_status: embeddedOrder?.status || null,
-        embedded_external_reference: embeddedOrder?.external_reference || null,
-        request_id: requestId,
-      });
-      this.markEvent(event.id, 'IGNORED', `Simulacao sem order real: ${dataId}`);
-      return { received: true, ignored: true, simulation: true, reason: 'SIMULATED_ORDER_ID' };
     }
 
     try {
@@ -191,6 +197,19 @@ function extractSignatureDataId(req) {
   );
 }
 
+function extractWebhookPayload(req) {
+  const type = req.body?.type || req.query?.type;
+  const signatureDataId = extractSignatureDataId(req);
+  const processableOrderId = extractProcessableOrderId(req);
+
+  return {
+    type,
+    orderId: processableOrderId,
+    signatureDataId,
+    embeddedOrder: extractEmbeddedOrder(req.body),
+  };
+}
+
 function extractProcessableOrderId(req) {
   const candidates = [
     req.body?.data?.id,
@@ -238,6 +257,7 @@ module.exports = {
   extractEmbeddedOrder,
   extractProcessableOrderId,
   extractSignatureDataId,
+  extractWebhookPayload,
   isMercadoPagoOrderId,
   shouldIgnoreWebhookError,
 };
