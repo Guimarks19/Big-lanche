@@ -1,0 +1,174 @@
+<!doctype html>
+<html lang="pt-BR">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>PDV Mercado Pago Point</title>
+    <link rel="stylesheet" href="/css/styles.css" />
+  </head>
+  <body>
+    <div class="app-shell">
+      <aside class="sidebar">
+        <div class="brand">
+          <div class="brand-mark">PDV</div>
+          <div>
+            <strong>Big Lanche</strong>
+            <span>Mercado Pago Point</span>
+          </div>
+        </div>
+
+        <nav class="nav-tabs" aria-label="Navegacao principal">
+          <button class="nav-button active" data-view="pos">Vendas</button>
+          <button class="nav-button" data-view="sales">Historico</button>
+          <button class="nav-button" data-view="cash">Caixa</button>
+        </nav>
+
+        <div class="terminal-state" id="terminalState">
+          <span class="status-dot"></span>
+          <span>Carregando terminal</span>
+        </div>
+      </aside>
+
+      <main class="main">
+        <section class="view active" id="view-pos">
+          <header class="page-header">
+            <div>
+              <p class="eyebrow">PDV</p>
+              <h1>Vendas</h1>
+            </div>
+          </header>
+
+          <div class="quick-sale-grid">
+            <section class="panel quick-payment-panel">
+              <h2>Valor da venda</h2>
+              <label class="amount-entry" for="saleAmountInput">
+                <span>R$</span>
+                <input id="saleAmountInput" type="text" inputmode="decimal" autocomplete="off" placeholder="0,00" />
+              </label>
+
+              <div class="quick-values">
+                <button data-quick-amount="500">R$ 5</button>
+                <button data-quick-amount="1000">R$ 10</button>
+                <button data-quick-amount="1500">R$ 15</button>
+                <button data-quick-amount="2000">R$ 20</button>
+                <button data-quick-amount="5000">R$ 50</button>
+                <button data-quick-amount="10000">R$ 100</button>
+              </div>
+
+              <div class="payment-actions">
+                <button class="primary-button" id="cardPaymentButton">Cartao</button>
+                <button class="secondary-button" id="pixPaymentButton">Pix</button>
+              </div>
+            </section>
+
+            <section class="panel terminal-panel">
+              <div class="section-header compact-header">
+                <h2>Credenciais Mercado Pago</h2>
+                <button class="ghost-button small" id="reloadCredentialsButton">Atualizar</button>
+              </div>
+              <div class="credential-status" id="credentialStatus"></div>
+              <div class="credential-grid">
+                <label class="field-label" for="publicKeyInput">
+                  Public Key
+                  <input class="text-input" id="publicKeyInput" type="text" autocomplete="off" placeholder="APP_USR-..." />
+                </label>
+                <label class="field-label" for="accessTokenInput">
+                  Access Token
+                  <input class="text-input" id="accessTokenInput" type="password" autocomplete="new-password" placeholder="APP_USR-..." />
+                </label>
+                <label class="field-label" for="clientIdInput">
+                  Client ID
+                  <input class="text-input" id="clientIdInput" type="text" autocomplete="off" />
+                </label>
+                <label class="field-label" for="clientSecretInput">
+                  Client Secret
+                  <input class="text-input" id="clientSecretInput" type="password" autocomplete="new-password" />
+                </label>
+                <label class="field-label full-row" for="webhookSecretInput">
+                  Webhook Secret
+                  <input class="text-input" id="webhookSecretInput" type="password" autocomplete="new-password" />
+                </label>
+              </div>
+              <button class="primary-button" id="saveCredentialsButton">Salvar credenciais</button>
+
+              <h2>Point Smart</h2>
+              <div class="terminal-card" id="currentTerminalCard"></div>
+              <label class="field-label" for="terminalIdInput">ID da maquininha</label>
+              <input class="text-input" id="terminalIdInput" type="text" autocomplete="off" placeholder="NEWLAND_N950__SERIAL" />
+              <div class="terminal-actions">
+                <button class="primary-button" id="saveTerminalButton">Salvar</button>
+                <button class="secondary-button" id="setupPdvButton">Ativar PDV</button>
+              </div>
+              <div class="section-header compact-header">
+                <h2>Terminais da conta</h2>
+                <button class="ghost-button" id="syncTerminalsButton">Sincronizar</button>
+              </div>
+              <div class="compact-list" id="terminalsList"></div>
+              <div class="last-sale" id="lastSale">
+                <span>Nenhuma transacao nesta sessao.</span>
+              </div>
+            </section>
+          </div>
+        </section>
+
+        <section class="view" id="view-sales">
+          <header class="page-header">
+            <div>
+              <p class="eyebrow">Controle</p>
+              <h1>Vendas</h1>
+            </div>
+            <button class="ghost-button" id="refreshSalesButton">Atualizar</button>
+          </header>
+
+          <div class="metrics-grid" id="metricsGrid"></div>
+
+          <div class="dashboard-grid">
+            <section class="panel">
+              <h2>Historico de vendas</h2>
+              <div class="compact-list" id="salesList"></div>
+            </section>
+
+            <section class="panel">
+              <h2>Movimentacoes do caixa</h2>
+              <div class="compact-list" id="cashMovements"></div>
+            </section>
+          </div>
+        </section>
+
+        <section class="view" id="view-cash">
+          <header class="page-header">
+            <div>
+              <p class="eyebrow">Fechamento</p>
+              <h1>Caixa</h1>
+            </div>
+            <button class="primary-button small" id="closeCashButton">Fechar caixa</button>
+          </header>
+
+          <section class="panel">
+            <div class="cash-summary" id="cashSummary"></div>
+          </section>
+        </section>
+
+      </main>
+    </div>
+
+    <div class="modal hidden" id="paymentModal" role="dialog" aria-modal="true">
+      <div class="modal-card">
+        <div id="paymentStatusIcon" class="payment-icon pending"></div>
+        <p class="eyebrow" id="paymentModeLabel">Pagamento</p>
+          <h2 id="paymentTitle">Pagamento em andamento</h2>
+        <strong class="payment-amount" id="paymentAmount">R$ 0,00</strong>
+        <p class="payment-message" id="paymentMessage">Aguardando pagamento na Point Smart...</p>
+        <p class="transaction-line hidden" id="transactionLine"></p>
+        <div class="modal-actions">
+          <button class="ghost-button" id="cancelPaymentButton">Cancelar</button>
+          <button class="primary-button hidden" id="newSaleButton">Novo pedido</button>
+        </div>
+      </div>
+    </div>
+
+    <div class="toast hidden" id="toast"></div>
+
+    <script src="/js/app.js"></script>
+  </body>
+</html>
