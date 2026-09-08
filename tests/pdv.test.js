@@ -15,6 +15,7 @@ class FakeMercadoPagoProvider {
     this.failCreate = false;
     this.counter = 1;
     this.lastCreatedOrderInput = null;
+    this.getOrderCalls = [];
   }
 
   validateWebhookSignature() {}
@@ -88,6 +89,7 @@ class FakeMercadoPagoProvider {
   }
 
   async getOrder(orderId) {
+    this.getOrderCalls.push(orderId);
     const order = this.orders.get(orderId);
     if (!order) throw new MercadoPagoError('Order nao encontrada.', 404, 'order_not_found');
     return order;
@@ -446,6 +448,56 @@ test('webhook repetido de venda direta nao duplica venda nem caixa', async (t) =
   assert.equal(second.body.duplicate, true);
   assert.equal(get(db, 'SELECT COUNT(*) AS count FROM sales').count, 1);
   assert.equal(get(db, 'SELECT COUNT(*) AS count FROM payments').count, 1);
+  assert.equal(get(db, "SELECT COUNT(*) AS count FROM cash_movements WHERE type = 'SALE'").count, 1);
+});
+
+test('webhook do simulador com data.id numerico retorna 200 sem consultar order fake', async (t) => {
+  const { db, http, provider } = setup();
+  t.after(() => db.close());
+
+  const response = await http
+    .post('/api/mercadopago/webhook')
+    .set('x-request-id', 'request-simulator')
+    .send({
+      action: 'order.processed',
+      type: 'order',
+      data: {
+        id: '123456',
+        status: 'processed',
+        external_reference: 'VENDA_999',
+      },
+    });
+
+  assert.equal(response.status, 200);
+  assert.equal(response.body.ignored, true);
+  assert.equal(response.body.simulation, true);
+  assert.equal(response.body.reason, 'SIMULATED_ORDER_ID');
+  assert.deepEqual(provider.getOrderCalls, []);
+  assert.equal(get(db, 'SELECT COUNT(*) AS count FROM sales').count, 0);
+});
+
+test('webhook usa req.body.data.id quando ele contem uma order real', async (t) => {
+  const { db, http, provider } = setup();
+  t.after(() => db.close());
+
+  provider.orders.set('ORD_BODY_1', buildPointOrder({ id: 'ORD_BODY_1', paymentId: 'PAY_BODY_1' }));
+
+  const response = await http
+    .post('/api/mercadopago/webhook?data.id=123456&type=order')
+    .set('x-request-id', 'request-body-order')
+    .send({
+      action: 'order.processed',
+      type: 'order',
+      data: {
+        id: 'ORD_BODY_1',
+        status: 'processed',
+        external_reference: 'VENDA_123',
+      },
+    });
+
+  assert.equal(response.status, 200);
+  assert.equal(response.body.sale.status, 'APPROVED');
+  assert.deepEqual(provider.getOrderCalls, ['ORD_BODY_1']);
   assert.equal(get(db, "SELECT COUNT(*) AS count FROM cash_movements WHERE type = 'SALE'").count, 1);
 });
 

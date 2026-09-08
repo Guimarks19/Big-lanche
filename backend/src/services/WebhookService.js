@@ -10,26 +10,39 @@ class WebhookService {
   }
 
   async handleMercadoPago(req) {
-    const dataId = extractDataId(req);
+    const signatureDataId = extractSignatureDataId(req);
+    const dataId = extractProcessableOrderId(req);
     const action = req.body?.action || req.query?.action || 'unknown';
-    const resourceType = req.body?.type || req.query?.type || 'unknown';
+    const bodyType = req.body?.type || 'unknown';
+    const resourceType = bodyType || req.query?.type || 'unknown';
     const requestId = req.headers['x-request-id'] || null;
+    const embeddedOrder = extractEmbeddedOrder(req.body);
 
     try {
       this.provider.validateWebhookSignature({
         xSignature: req.headers['x-signature'],
         xRequestId: requestId,
-        dataId,
+        dataId: signatureDataId,
       });
     } catch (error) {
       if (error instanceof InvalidWebhookSignatureError) {
+        console.warn('[MercadoPagoWebhook] Assinatura invalida.', {
+          action,
+          data_id: signatureDataId,
+          request_id: requestId,
+        });
         throw new AppError('Assinatura do Webhook invalida.', 401, 'INVALID_WEBHOOK_SIGNATURE');
       }
       throw error;
     }
 
     if (!dataId) {
-      throw new AppError('Webhook sem data.id.', 400, 'WEBHOOK_DATA_ID_REQUIRED');
+      console.info('[MercadoPagoWebhook] Notificacao ignorada sem data.id.', {
+        action,
+        body_type: bodyType,
+        request_id: requestId,
+      });
+      return { received: true, ignored: true, reason: 'WEBHOOK_DATA_ID_REQUIRED' };
     }
 
     const event = this.registerEvent({
@@ -41,23 +54,66 @@ class WebhookService {
     });
 
     if (event.duplicate && event.status === 'PROCESSED') {
+      console.info('[MercadoPagoWebhook] Notificacao duplicada ja processada.', {
+        action,
+        data_id: dataId,
+        request_id: requestId,
+      });
       return { received: true, duplicate: true };
     }
 
-    if (resourceType !== 'order') {
+    if (bodyType !== 'order') {
+      console.info('[MercadoPagoWebhook] Notificacao ignorada: body.type diferente de order.', {
+        action,
+        body_type: bodyType,
+        data_id: dataId,
+        request_id: requestId,
+      });
       this.markEvent(event.id, 'IGNORED');
-      return { received: true, ignored: true };
+      return { received: true, ignored: true, reason: 'UNSUPPORTED_WEBHOOK_TYPE' };
+    }
+
+    if (!isMercadoPagoOrderId(dataId)) {
+      console.info('[MercadoPagoWebhook] Simulacao recebida sem ID real de order.', {
+        action,
+        data_id: dataId,
+        embedded_status: embeddedOrder?.status || null,
+        embedded_external_reference: embeddedOrder?.external_reference || null,
+        request_id: requestId,
+      });
+      this.markEvent(event.id, 'IGNORED', `Simulacao sem order real: ${dataId}`);
+      return { received: true, ignored: true, simulation: true, reason: 'SIMULATED_ORDER_ID' };
     }
 
     try {
       const order = await this.provider.getOrder(dataId);
+      console.info('[MercadoPagoWebhook] Order real consultada no Mercado Pago.', {
+        action,
+        order_id: dataId,
+        status: order?.status || null,
+        external_reference: order?.external_reference || null,
+        request_id: requestId,
+      });
       const sale = this.paymentService.applyProviderOrder(order);
       this.markEvent(event.id, 'PROCESSED');
       return { received: true, sale };
     } catch (error) {
-      if (shouldIgnoreWebhookError(error)) {
+      if (shouldIgnoreWebhookError(error, { dataId, embeddedOrder })) {
+        console.info('[MercadoPagoWebhook] Order nao processada, mas webhook recebido com sucesso.', {
+          action,
+          data_id: dataId,
+          error_code: error.code || error.name,
+          error_status: error.statusCode || null,
+          simulation: isLikelySimulation(dataId, embeddedOrder, error),
+          request_id: requestId,
+        });
         this.markEvent(event.id, 'IGNORED', error.message);
-        return { received: true, ignored: true, reason: error.code };
+        return {
+          received: true,
+          ignored: true,
+          simulation: isLikelySimulation(dataId, embeddedOrder, error),
+          reason: error.code || 'ORDER_LOOKUP_IGNORED',
+        };
       }
       this.markEvent(event.id, 'FAILED', error.message);
       throw error;
@@ -114,16 +170,18 @@ class WebhookService {
   }
 }
 
-function shouldIgnoreWebhookError(error) {
+function shouldIgnoreWebhookError(error, context = {}) {
   return (
     (error instanceof AppError &&
       ['PROVIDER_ORDER_NOT_POINT', 'PROVIDER_ORDER_AMOUNT_REQUIRED'].includes(error.code)) ||
     (error instanceof MercadoPagoError &&
-      (error.code === 'order_not_found' || error.statusCode === 404))
+      (error.code === 'order_not_found' ||
+        error.statusCode === 404 ||
+        (isLikelySimulation(context.dataId, context.embeddedOrder, error) && error.statusCode === 400)))
   );
 }
 
-function extractDataId(req) {
+function extractSignatureDataId(req) {
   return (
     req.query?.['data.id'] ||
     req.query?.data_id ||
@@ -133,4 +191,53 @@ function extractDataId(req) {
   );
 }
 
-module.exports = { WebhookService, extractDataId, shouldIgnoreWebhookError };
+function extractProcessableOrderId(req) {
+  const candidates = [
+    req.body?.data?.id,
+    req.query?.['data.id'],
+    req.query?.data_id,
+    req.body?.id,
+  ].filter(Boolean);
+
+  return candidates.find(isMercadoPagoOrderId) || candidates[0] || null;
+}
+
+function extractEmbeddedOrder(body = {}) {
+  const data = body?.data;
+  if (!data || typeof data !== 'object') return null;
+
+  if (
+    data.status ||
+    data.status_detail ||
+    data.external_reference ||
+    data.transactions ||
+    data.total_paid_amount ||
+    data.type
+  ) {
+    return data;
+  }
+
+  return null;
+}
+
+function isMercadoPagoOrderId(value) {
+  return /^ORD/i.test(String(value || '').trim());
+}
+
+function isLikelySimulation(dataId, embeddedOrder, error) {
+  return (
+    !isMercadoPagoOrderId(dataId) ||
+    Boolean(embeddedOrder) ||
+    error?.code === 'order_not_found' ||
+    error?.statusCode === 404
+  );
+}
+
+module.exports = {
+  WebhookService,
+  extractEmbeddedOrder,
+  extractProcessableOrderId,
+  extractSignatureDataId,
+  isMercadoPagoOrderId,
+  shouldIgnoreWebhookError,
+};

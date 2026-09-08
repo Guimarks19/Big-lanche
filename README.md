@@ -194,8 +194,10 @@ Tambem e possivel testar a recepcao do Webhook pelo painel Mercado Pago:
 2. Configure a URL `https://seu-dominio-publico/api/mercadopago/webhook`.
 3. Selecione o evento `Order (Mercado Pago)`.
 4. Clique em `Simular`.
-5. Informe um `Data ID` de uma order de teste existente.
+5. Informe um `Data ID` de uma order de teste existente ou use o ID de teste sugerido pelo simulador.
 6. Verifique se a resposta foi `200`.
+
+Quando o simulador enviar um `data.id` numerico, como `123456`, o backend registra um log de simulacao e responde `200` sem tentar criar venda local. Orders reais da Point continuam sendo consultadas na API oficial quando o ID comeca com `ORD`.
 
 Se ainda estiver local, use uma URL temporaria:
 
