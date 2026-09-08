@@ -395,17 +395,23 @@ async function loadSales() {
   const { sales } = await api('/api/sales?limit=40');
   els.salesList.innerHTML = sales.length
     ? sales
-        .map(
-          (sale) => `
+        .map((sale) => {
+          const payment = sale.payment || {};
+          const transaction = payment.transaction_id || sale.provider_payment_id || '-';
+          const installments = payment.installments ? ` · ${payment.installments}x` : '';
+          const terminal = payment.provider_terminal_id ? ` · Terminal ${payment.provider_terminal_id}` : '';
+
+          return `
             <div class="compact-row">
-              <div>
+              <div class="sale-details">
                 <strong>${currency.format(sale.total)}</strong>
-                <div class="muted">${formatDateTime(sale.created_at)} · ${sale.payment_method}</div>
+                <div class="muted">${formatDateTime(sale.created_at)} · ${sale.payment_method}${installments}</div>
+                <div class="muted">Transacao ${escapeHtml(transaction)}${escapeHtml(terminal)}</div>
               </div>
               <span class="sale-status ${sale.status}">${statusLabel(sale.status)}</span>
             </div>
-          `,
-        )
+          `;
+        })
         .join('')
     : '<div class="empty-state">Nenhuma venda registrada.</div>';
 }

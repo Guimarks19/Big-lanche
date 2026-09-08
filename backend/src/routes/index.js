@@ -61,6 +61,7 @@ function createRoutes(services, env) {
   router.get('/mercadopago/credentials', credentialController.status);
   router.put('/mercadopago/credentials', credentialController.save);
 
+  router.post('/mercadopago/webhook', asyncHandler(webhookController.mercadoPago));
   router.post('/webhooks/mercadopago', asyncHandler(webhookController.mercadoPago));
   router.post('/dev/mercadopago/orders/:orderId/events', asyncHandler(devController.simulateOrderEvent));
 

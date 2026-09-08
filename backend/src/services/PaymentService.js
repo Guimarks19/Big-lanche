@@ -58,6 +58,7 @@ class PaymentService {
         status: mapOrderToInternalStatus(order, payment),
         statusDetail: order.status_detail || payment?.status_detail || null,
         rawResponse: order,
+        ...extractProviderMetadata(order, payment),
       });
 
       return this.saleService.getSale(sale.id);
@@ -116,12 +117,12 @@ class PaymentService {
     const transactionId = extractTransactionId(payment);
     const providerOrderId = order?.id;
     const externalReference = order?.external_reference;
-    const sale =
+    let sale =
       (providerOrderId && this.saleService.getSaleByProviderOrderId(providerOrderId)) ||
       (externalReference && this.saleService.getSaleByExternalReference(externalReference));
 
     if (!sale) {
-      throw new AppError('Order nao vinculada a nenhuma venda local.', 404, 'SALE_NOT_FOUND_FOR_ORDER');
+      sale = this.createSaleFromProviderOrder(order);
     }
 
     const nextStatus = mapOrderToInternalStatus(order, payment);
@@ -140,6 +141,7 @@ class PaymentService {
         status: nextStatus,
         statusDetail,
         rawResponse: order,
+        ...extractProviderMetadata(order, payment),
       });
 
       if (providerOrderId && !currentSale.provider_order_id) {
@@ -186,6 +188,60 @@ class PaymentService {
       }
 
       return this.saleService.getSale(sale.id);
+    });
+  }
+
+  createSaleFromProviderOrder(order) {
+    const providerOrderId = order?.id;
+    if (!providerOrderId) {
+      throw new AppError('Order do Mercado Pago sem ID.', 400, 'PROVIDER_ORDER_ID_REQUIRED');
+    }
+
+    if (order?.type && order.type !== 'point') {
+      throw new AppError('Order recebida nao e do Mercado Pago Point.', 400, 'PROVIDER_ORDER_NOT_POINT');
+    }
+
+    const payment = extractPrimaryPayment(order);
+    const transactionId = extractTransactionId(payment);
+    const totalCents = extractProviderAmountCents(order, payment);
+    if (!Number.isInteger(totalCents) || totalCents <= 0) {
+      throw new AppError(
+        'Order do Mercado Pago sem valor valido para cadastro de venda.',
+        400,
+        'PROVIDER_ORDER_AMOUNT_REQUIRED',
+      );
+    }
+
+    return withTransaction(this.db, () => {
+      const existing =
+        this.saleService.getSaleByProviderOrderId(providerOrderId) ||
+        (order.external_reference && this.saleService.getSaleByExternalReference(order.external_reference));
+      if (existing) return existing;
+
+      const cashRegister = this.cashRegisterService.ensureOpen();
+      const externalReference = sanitizeExternalReference(order.external_reference, providerOrderId);
+      const paymentMethod = mapProviderPaymentMethod(payment, order);
+
+      // Venda criada por notificacao: ela so entra no caixa quando applyProviderOrder confirmar APPROVED.
+      const saleResult = run(
+        this.db,
+        `INSERT INTO sales
+         (total_cents, status, payment_method, external_reference, provider_order_id, provider_payment_id,
+          idempotency_key, cash_register_id, source)
+         VALUES (?, 'PENDING', ?, ?, ?, ?, ?, ?, 'MERCADOPAGO_WEBHOOK')`,
+        [
+          totalCents,
+          paymentMethod,
+          externalReference,
+          providerOrderId,
+          transactionId,
+          `mp_order_${providerOrderId}`,
+          cashRegister.id,
+        ],
+      );
+
+      upsertTerminalFromOrder(this.db, order);
+      return this.saleService.getSale(saleResult.lastInsertRowid);
     });
   }
 
@@ -273,8 +329,10 @@ function upsertPayment(db, input) {
   run(
     db,
     `INSERT INTO payments
-     (sale_id, provider, transaction_id, provider_order_id, amount_cents, payment_method, status, status_detail, raw_response)
-     VALUES (?, 'mercadopago', ?, ?, ?, ?, ?, ?, ?)
+     (sale_id, provider, transaction_id, provider_order_id, amount_cents, payment_method, status,
+      status_detail, installments, provider_payment_method_id, provider_payment_method_type,
+      provider_terminal_id, provider_created_at, provider_updated_at, raw_response)
+     VALUES (?, 'mercadopago', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
      ON CONFLICT(provider, provider_order_id)
      DO UPDATE SET
        transaction_id = COALESCE(excluded.transaction_id, payments.transaction_id),
@@ -282,6 +340,12 @@ function upsertPayment(db, input) {
        payment_method = excluded.payment_method,
        status = excluded.status,
        status_detail = excluded.status_detail,
+       installments = excluded.installments,
+       provider_payment_method_id = excluded.provider_payment_method_id,
+       provider_payment_method_type = excluded.provider_payment_method_type,
+       provider_terminal_id = excluded.provider_terminal_id,
+       provider_created_at = COALESCE(payments.provider_created_at, excluded.provider_created_at),
+       provider_updated_at = excluded.provider_updated_at,
        raw_response = excluded.raw_response,
        updated_at = CURRENT_TIMESTAMP`,
     [
@@ -292,6 +356,12 @@ function upsertPayment(db, input) {
       input.paymentMethod,
       input.status,
       input.statusDetail,
+      input.installments,
+      input.providerPaymentMethodId,
+      input.providerPaymentMethodType,
+      input.providerTerminalId,
+      input.providerCreatedAt,
+      input.providerUpdatedAt,
       JSON.stringify(input.rawResponse || {}),
     ],
   );
@@ -303,10 +373,10 @@ function extractPrimaryPayment(order) {
 
 function extractTransactionId(payment) {
   return (
+    payment?.id ||
     payment?.reference?.id ||
     payment?.reference_id ||
     payment?.referenceId ||
-    payment?.id ||
     null
   );
 }
@@ -316,6 +386,63 @@ function extractPaidAmountCents(order, payment) {
   if (payment?.amount !== undefined) return decimalToCents(String(payment.amount));
   if (order?.total_paid_amount !== undefined) return decimalToCents(String(order.total_paid_amount));
   return 0;
+}
+
+function extractProviderAmountCents(order, payment) {
+  if (payment?.amount !== undefined) return decimalToCents(String(payment.amount));
+  if (order?.total_amount !== undefined) return decimalToCents(String(order.total_amount));
+  if (order?.total_paid_amount !== undefined) return decimalToCents(String(order.total_paid_amount));
+  return extractPaidAmountCents(order, payment);
+}
+
+function mapProviderPaymentMethod(payment, order) {
+  const type = String(
+    payment?.payment_method?.type ||
+      order?.config?.payment_method?.default_type ||
+      '',
+  ).toLowerCase();
+
+  if (type === 'qr' || type === 'pix') return 'PIX';
+  return 'CARD';
+}
+
+function extractProviderMetadata(order, payment) {
+  const installments = payment?.payment_method?.installments;
+
+  return {
+    installments:
+      installments !== undefined && installments !== null && Number.isInteger(Number(installments))
+        ? Number(installments)
+        : null,
+    providerPaymentMethodId: payment?.payment_method?.id || null,
+    providerPaymentMethodType:
+      payment?.payment_method?.type || order?.config?.payment_method?.default_type || null,
+    providerTerminalId: order?.config?.point?.terminal_id || null,
+    providerCreatedAt: order?.created_date || order?.date_created || null,
+    providerUpdatedAt: order?.last_updated_date || order?.date_last_updated || null,
+  };
+}
+
+function sanitizeExternalReference(externalReference, providerOrderId) {
+  const normalized = String(externalReference || '').trim();
+  if (normalized) return normalized;
+  return `MP_ORDER_${providerOrderId}`;
+}
+
+function upsertTerminalFromOrder(db, order) {
+  const terminalId = order?.config?.point?.terminal_id;
+  if (!terminalId) return;
+
+  run(
+    db,
+    `INSERT INTO terminals (provider, provider_terminal_id, operating_mode, active, last_synced_at)
+     VALUES ('mercadopago', ?, 'PDV', 1, CURRENT_TIMESTAMP)
+     ON CONFLICT(provider, provider_terminal_id)
+     DO UPDATE SET
+       operating_mode = COALESCE(terminals.operating_mode, excluded.operating_mode),
+       last_synced_at = CURRENT_TIMESTAMP`,
+    [terminalId],
+  );
 }
 
 function mapOrderToInternalStatus(order, payment = null) {
@@ -351,5 +478,7 @@ module.exports = {
   extractPaidAmountCents,
   extractPrimaryPayment,
   extractTransactionId,
+  extractProviderAmountCents,
   mapOrderToInternalStatus,
+  mapProviderPaymentMethod,
 };

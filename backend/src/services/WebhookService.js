@@ -1,5 +1,5 @@
 const { get, run } = require('../database/connection');
-const { AppError } = require('../utils/errors');
+const { AppError, MercadoPagoError } = require('../utils/errors');
 const { InvalidWebhookSignatureError } = require('./MercadoPagoProvider');
 
 class WebhookService {
@@ -55,9 +55,9 @@ class WebhookService {
       this.markEvent(event.id, 'PROCESSED');
       return { received: true, sale };
     } catch (error) {
-      if (error instanceof AppError && error.code === 'SALE_NOT_FOUND_FOR_ORDER') {
+      if (shouldIgnoreWebhookError(error)) {
         this.markEvent(event.id, 'IGNORED', error.message);
-        return { received: true, ignored: true };
+        return { received: true, ignored: true, reason: error.code };
       }
       this.markEvent(event.id, 'FAILED', error.message);
       throw error;
@@ -101,6 +101,15 @@ class WebhookService {
   }
 }
 
+function shouldIgnoreWebhookError(error) {
+  return (
+    (error instanceof AppError &&
+      ['PROVIDER_ORDER_NOT_POINT', 'PROVIDER_ORDER_AMOUNT_REQUIRED'].includes(error.code)) ||
+    (error instanceof MercadoPagoError &&
+      (error.code === 'order_not_found' || error.statusCode === 404))
+  );
+}
+
 function extractDataId(req) {
   return (
     req.query?.['data.id'] ||
@@ -111,4 +120,4 @@ function extractDataId(req) {
   );
 }
 
-module.exports = { WebhookService, extractDataId };
+module.exports = { WebhookService, extractDataId, shouldIgnoreWebhookError };

@@ -136,6 +136,53 @@ function createTempEnvFile(t) {
   return path.join(dir, '.env');
 }
 
+function buildPointOrder({
+  id = 'ORD_DIRECT_1',
+  paymentId = 'PAY_DIRECT_1',
+  amount = '15.00',
+  status = 'processed',
+  statusDetail = 'processed',
+  paymentStatus = 'processed',
+  paymentStatusDetail = 'accredited',
+  paymentMethodType = 'credit_card',
+  paymentMethodId = 'visa',
+  installments = 1,
+  terminalId = 'NEWLAND_N950__DIRECT001',
+  externalReference = null,
+} = {}) {
+  return {
+    id,
+    type: 'point',
+    external_reference: externalReference,
+    status,
+    status_detail: statusDetail,
+    total_paid_amount: amount,
+    created_date: '2026-09-08T15:20:00.000Z',
+    last_updated_date: '2026-09-08T15:21:00.000Z',
+    transactions: {
+      payments: [
+        {
+          id: paymentId,
+          amount,
+          paid_amount: amount,
+          status: paymentStatus,
+          status_detail: paymentStatusDetail,
+          payment_method: {
+            type: paymentMethodType,
+            id: paymentMethodId,
+            installments,
+          },
+        },
+      ],
+    },
+    config: {
+      point: {
+        terminal_id: terminalId,
+      },
+    },
+  };
+}
+
 async function createSale(http, paymentMethod = 'CARD', amountCents = 1500) {
   const response = await http.post('/api/sales').send({
     payment_method: paymentMethod,
@@ -345,37 +392,63 @@ test('webhook duplicado nao duplica caixa', async (t) => {
   assert.equal(get(db, "SELECT COUNT(*) AS count FROM cash_movements WHERE type = 'SALE'").count, 1);
 });
 
-test('webhook de transacao inexistente e ignorado sem alterar vendas', async (t) => {
+test('webhook de venda feita na Point cria venda local automaticamente', async (t) => {
   const { db, http, provider } = setup();
   t.after(() => db.close());
 
-  provider.orders.set('ORD_UNKNOWN', {
-    id: 'ORD_UNKNOWN',
-    type: 'point',
-    external_reference: 'SALE_UNKNOWN',
-    status: 'processed',
-    status_detail: 'processed',
-    transactions: {
-      payments: [
-        {
-          id: 'PAY_UNKNOWN',
-          amount: '15.00',
-          paid_amount: '15.00',
-          status: 'processed',
-          status_detail: 'accredited',
-        },
-      ],
-    },
-  });
+  provider.orders.set('ORD_DIRECT_1', buildPointOrder());
 
   const response = await http
-    .post('/api/webhooks/mercadopago?data.id=ORD_UNKNOWN&type=order')
-    .set('x-request-id', 'request-unknown')
-    .send({ action: 'order.processed', type: 'order', data: { id: 'ORD_UNKNOWN' } });
+    .post('/api/mercadopago/webhook?data.id=ORD_DIRECT_1&type=order')
+    .set('x-request-id', 'request-direct')
+    .send({ action: 'order.processed', type: 'order', data: { id: 'ORD_DIRECT_1' } });
+
+  assert.equal(response.status, 200);
+  assert.equal(response.body.sale.status, 'APPROVED');
+  assert.equal(response.body.sale.source, 'MERCADOPAGO_WEBHOOK');
+  assert.equal(response.body.sale.payment.transaction_id, 'PAY_DIRECT_1');
+  assert.equal(response.body.sale.payment.installments, 1);
+  assert.equal(response.body.sale.payment.provider_terminal_id, 'NEWLAND_N950__DIRECT001');
+  assert.equal(get(db, "SELECT COUNT(*) AS count FROM sales WHERE status = 'APPROVED'").count, 1);
+  assert.equal(get(db, "SELECT COUNT(*) AS count FROM cash_movements WHERE type = 'SALE'").count, 1);
+});
+
+test('webhook repetido de venda direta nao duplica venda nem caixa', async (t) => {
+  const { db, http, provider } = setup();
+  t.after(() => db.close());
+
+  provider.orders.set('ORD_DIRECT_DUP', buildPointOrder({ id: 'ORD_DIRECT_DUP', paymentId: 'PAY_DIRECT_DUP' }));
+  const url = '/api/mercadopago/webhook?data.id=ORD_DIRECT_DUP&type=order';
+
+  await http
+    .post(url)
+    .set('x-request-id', 'request-direct-1')
+    .send({ action: 'order.processed', type: 'order', data: { id: 'ORD_DIRECT_DUP' } });
+  const second = await http
+    .post(url)
+    .set('x-request-id', 'request-direct-2')
+    .send({ action: 'order.processed', type: 'order', data: { id: 'ORD_DIRECT_DUP' } });
+
+  assert.equal(second.status, 200);
+  assert.equal(second.body.sale.status, 'APPROVED');
+  assert.equal(get(db, 'SELECT COUNT(*) AS count FROM sales').count, 1);
+  assert.equal(get(db, 'SELECT COUNT(*) AS count FROM payments').count, 1);
+  assert.equal(get(db, "SELECT COUNT(*) AS count FROM cash_movements WHERE type = 'SALE'").count, 1);
+});
+
+test('webhook com order inexistente na API oficial e ignorado sem venda local', async (t) => {
+  const { db, http } = setup();
+  t.after(() => db.close());
+
+  const response = await http
+    .post('/api/mercadopago/webhook?data.id=ORD_MISSING&type=order')
+    .set('x-request-id', 'request-missing')
+    .send({ action: 'order.processed', type: 'order', data: { id: 'ORD_MISSING' } });
 
   assert.equal(response.status, 200);
   assert.equal(response.body.ignored, true);
-  assert.equal(get(db, "SELECT COUNT(*) AS count FROM sales WHERE status = 'APPROVED'").count, 0);
+  assert.equal(response.body.reason, 'order_not_found');
+  assert.equal(get(db, 'SELECT COUNT(*) AS count FROM sales').count, 0);
 });
 
 test('valor divergente nao aprova venda', async (t) => {

@@ -410,6 +410,11 @@ h2 {
   overflow-wrap: anywhere;
 }
 
+.sale-details {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
 .section-header {
   margin-bottom: 14px;
 }

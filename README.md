@@ -4,6 +4,8 @@ Sistema inicial de PDV para loja, com backend Node.js, frontend HTML/CSS/JS, SQL
 
 Nesta versao o fluxo principal e venda por valor: nao e necessario declarar produtos. O sistema registra uma venda interna generica, envia a cobranca para a Point Smart e so considera vendido quando o Mercado Pago confirmar o pagamento.
 
+O backend tambem recebe Webhooks `Order (Mercado Pago)`. Se chegar uma order Point aprovada que ainda nao existe no banco, o sistema consulta a API oficial, cria a venda automaticamente e contabiliza no caixa sem o atendente registrar a venda manualmente.
+
 ## O que ja esta construido
 
 - Venda por valor, sem obrigar cadastro de produtos.
@@ -11,12 +13,13 @@ Nesta versao o fluxo principal e venda por valor: nao e necessario declarar prod
 - Integracao isolada em `PaymentService -> MercadoPagoProvider`.
 - Criacao de order Point em `POST /v1/orders` com `X-Idempotency-Key`.
 - Consulta de status em `GET /v1/orders/{order_id}`.
-- Webhook `Order (Mercado Pago)` com validacao oficial por `WebhookSignatureValidator`.
+- Webhook `Order (Mercado Pago)` em `POST /api/mercadopago/webhook`, com validacao oficial por `WebhookSignatureValidator`.
+- Cadastro automatico de venda quando uma order Point chega pelo Webhook e ainda nao existe localmente.
 - Movimento de caixa somente apos pagamento aprovado confirmado.
 - Protecao contra webhook duplicado.
 - Aba `Vendas` com valor, botoes de pagamento, credenciais Mercado Pago, cadastro/status da Point Smart e ultima transacao.
 - Aba `Historico` com faturamento, vendas, ticket medio, formas de pagamento e movimentacoes.
-- Testes automatizados para os 12 cenarios solicitados.
+- Testes automatizados cobrindo venda interna, venda vinda da Point, Webhook duplicado e falhas.
 
 ## Documentacao oficial usada
 
@@ -68,6 +71,13 @@ MERCADOPAGO_ENABLE_QR=false
 ```
 
 `MERCADOPAGO_TERMINAL_ID` deve usar o ID retornado por `GET /terminals/v1/list`, por exemplo `NEWLAND_N950__SBX0000001` em teste.
+
+O backend tambem aceita estes aliases, se voce preferir:
+
+```env
+MERCADO_PAGO_ACCESS_TOKEN=
+MERCADO_PAGO_WEBHOOK_SECRET=
+```
 
 Pela documentacao oficial, `Access Token` e `Client Secret` sao chaves privadas e ficam somente no backend. A tela do PDV envia esses valores para `PUT /api/mercadopago/credentials`, o backend grava no `.env` e a interface passa a mostrar apenas valores mascarados.
 
@@ -132,6 +142,25 @@ npm test
 
 Os testes usam um provider falso para simular respostas oficiais da Orders API sem cobrança real.
 
+## URL de Webhook para producao
+
+No painel do Mercado Pago, em `Webhooks > Configurar notificacoes`, selecione o evento `Order (Mercado Pago)` e informe a URL publica HTTPS do backend:
+
+```text
+https://seu-dominio-publico/api/mercadopago/webhook
+```
+
+Exemplos validos:
+
+```text
+https://api.big-lanche2.com/api/mercadopago/webhook
+https://big-lanche2.onrender.com/api/mercadopago/webhook
+```
+
+Nao use o link do GitHub. O GitHub guarda o codigo, mas nao executa sua rota `POST`.
+
+O Mercado Pago envia a notificacao por `HTTPS POST`. A rota valida a assinatura com `x-signature`, `x-request-id`, `data.id` e `MERCADOPAGO_WEBHOOK_SECRET`; depois consulta `GET /v1/orders/{order_id}` com o `Access Token`, confirma o status real e grava a venda.
+
 ## Como testar com Mercado Pago sem cobrança real
 
 1. Crie uma aplicacao no painel Mercado Pago.
@@ -142,7 +171,7 @@ Os testes usam um provider falso para simular respostas oficiais da Orders API s
 6. Configure o Webhook no topico `Order (Mercado Pago)` apontando para:
 
 ```text
-https://seu-dominio-publico/api/webhooks/mercadopago
+https://seu-dominio-publico/api/mercadopago/webhook
 ```
 
 Para ambiente local, exponha a porta 3000 com uma ferramenta como ngrok ou Cloudflare Tunnel.
@@ -166,6 +195,29 @@ curl -X POST http://localhost:3000/api/dev/mercadopago/orders/ORDER_ID/events \
 
 Esse endpoint local chama a simulacao oficial do Mercado Pago: `POST /v1/orders/{order_id}/events`.
 
+Tambem e possivel testar a recepcao do Webhook pelo painel Mercado Pago:
+
+1. Publique ou exponha o backend com HTTPS.
+2. Configure a URL `https://seu-dominio-publico/api/mercadopago/webhook`.
+3. Selecione o evento `Order (Mercado Pago)`.
+4. Clique em `Simular`.
+5. Informe um `Data ID` de uma order de teste existente.
+6. Verifique se a resposta foi `200`.
+
+Se ainda estiver local, use uma URL temporaria:
+
+```bash
+ngrok http 3000
+```
+
+Depois coloque no Mercado Pago:
+
+```text
+https://SEU-SUBDOMINIO.ngrok-free.app/api/mercadopago/webhook
+```
+
+Em producao, publique o backend em um provedor que entregue HTTPS, como Render, Railway, Fly.io, VPS com Nginx/Caddy, ou outro host Node.js. Configure as variaveis de ambiente no painel do provedor, nao no repositorio.
+
 ## Fluxo atual
 
 ```text
@@ -183,6 +235,28 @@ Se aprovado: venda APPROVED e valor entra no caixa
 ↓
 Se recusado/cancelado/expirado: nao entra no caixa
 ```
+
+Fluxo de venda recebida via Webhook:
+
+```text
+Point Smart
+↓
+Mercado Pago envia Order (Mercado Pago)
+↓
+POST /api/mercadopago/webhook
+↓
+Backend valida assinatura
+↓
+Backend consulta GET /v1/orders/{order_id}
+↓
+Se order Point aprovada: cria venda automaticamente
+↓
+Grava pagamento, parcelas, metodo, terminal e JSON bruto
+↓
+Valor entra no caixa uma unica vez
+```
+
+Observacao importante: este fluxo depende de o Mercado Pago enviar uma notificacao `Order (Mercado Pago)`. Se uma venda avulsa feita direto na maquininha nao gerar uma order nesse topico para a sua aplicacao, o backend nao tera como recebe-la por esse Webhook.
 
 ## Observacao sobre Pix
 
