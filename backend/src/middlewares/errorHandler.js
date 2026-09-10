@@ -21,7 +21,7 @@ function errorHandler(error, req, res, next) {
     res.status(error.statusCode).json({
       error: {
         code: 'BAD_REQUEST',
-        message: error.expose ? error.message : 'Requisicao invalida.',
+        message: error.expose ? error.message : 'Requisição inválida.',
       },
     });
     return;

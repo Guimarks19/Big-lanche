@@ -17,7 +17,7 @@ function decryptSecret(value, env) {
   if (!value) return null;
   const [version, ivRaw, tagRaw, encryptedRaw] = String(value).split(':');
   if (version !== 'v1' || !ivRaw || !tagRaw || !encryptedRaw) {
-    throw new AppError('Token criptografado invalido.', 500, 'INVALID_ENCRYPTED_SECRET');
+    throw new AppError('Token criptografado inválido.', 500, 'INVALID_ENCRYPTED_SECRET');
   }
 
   const key = resolveEncryptionKey(env);
@@ -41,7 +41,7 @@ function resolveEncryptionKey(env) {
   }
 
   if (env?.NODE_ENV === 'production') {
-    throw new AppError('Configure ENCRYPTION_KEY para criptografar tokens sensiveis.', 500, 'ENCRYPTION_KEY_REQUIRED');
+    throw new AppError('Configure ENCRYPTION_KEY para criptografar tokens sensíveis.', 500, 'ENCRYPTION_KEY_REQUIRED');
   }
 
   return crypto.createHash('sha256').update('big-lanche-development-encryption-key').digest();

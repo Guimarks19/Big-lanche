@@ -32,7 +32,7 @@ function normalizeEmail(email) {
 function assertValidEmail(email) {
   const normalized = normalizeEmail(email);
   if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(normalized) || normalized.length > 254) {
-    throw new AppError('Informe um e-mail valido.', 400, 'INVALID_EMAIL');
+    throw new AppError('Informe um e-mail válido.', 400, 'INVALID_EMAIL');
   }
   return normalized;
 }
@@ -51,7 +51,7 @@ function assertStrongPassword(password) {
   const requirements = passwordRequirements(password);
   const valid = Object.values(requirements).every(Boolean);
   if (!valid) {
-    throw new AppError('A senha precisa ter 8 caracteres, letra maiuscula, letra minuscula e numero.', 400, 'WEAK_PASSWORD', {
+    throw new AppError('A senha precisa ter 8 caracteres, letra maiúscula, letra minúscula e número.', 400, 'WEAK_PASSWORD', {
       requirements,
     });
   }

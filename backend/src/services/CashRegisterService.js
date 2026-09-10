@@ -25,7 +25,7 @@ class CashRegisterService {
 
     const amount = Number(opening_balance_cents);
     if (!Number.isInteger(amount) || amount < 0) {
-      throw new AppError('Saldo inicial invalido.', 400, 'INVALID_OPENING_BALANCE');
+      throw new AppError('Saldo inicial inválido.', 400, 'INVALID_OPENING_BALANCE');
     }
 
     const id = await insert(
@@ -56,7 +56,7 @@ class CashRegisterService {
     const row = userId
       ? await get(db, 'SELECT * FROM cash_registers WHERE id = ? AND user_id = ?', [Number(id), userId])
       : await get(db, 'SELECT * FROM cash_registers WHERE id = ?', [Number(id)]);
-    if (!row) throw new AppError('Caixa nao encontrado.', 404, 'CASH_REGISTER_NOT_FOUND');
+    if (!row) throw new AppError('Caixa não encontrado.', 404, 'CASH_REGISTER_NOT_FOUND');
     return this.serializeCashRegister(row);
   }
 

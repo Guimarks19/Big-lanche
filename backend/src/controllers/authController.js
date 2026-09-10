@@ -52,7 +52,7 @@ function createAuthController(authService, env) {
       await authService.requestPasswordReset(req.body?.email);
       res.json({
         received: true,
-        message: 'Se o e-mail existir e estiver verificado, enviaremos as instrucoes.',
+        message: 'Se o e-mail existir e estiver verificado, enviaremos as instruções.',
       });
     },
 

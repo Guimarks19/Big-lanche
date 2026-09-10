@@ -12,8 +12,8 @@ class EmailService {
     return this.sendMail({
       to: user.email,
       subject: 'Confirme seu e-mail na Big Lanche',
-      text: `Ola, ${user.name}. Confirme seu e-mail acessando: ${url}`,
-      html: `<p>Ola, ${escapeHtml(user.name)}.</p><p>Confirme seu e-mail acessando <a href="${url}">este link</a>.</p>`,
+      text: `Olá, ${user.name}. Confirme seu e-mail acessando: ${url}`,
+      html: `<p>Olá, ${escapeHtml(user.name)}.</p><p>Confirme seu e-mail acessando <a href="${url}">este link</a>.</p>`,
       meta: { type: 'email_verification', url },
     });
   }
@@ -36,7 +36,7 @@ class EmailService {
       if (this.env.NODE_ENV === 'production') {
         throw new Error('SMTP_HOST precisa estar configurado para envio real de e-mail.');
       }
-      console.info('[EmailService] SMTP nao configurado; e-mail mantido apenas em memoria local.', {
+      console.info('[EmailService] SMTP não configurado; e-mail mantido apenas em memória local.', {
         to: maskForLog(message.to),
         subject: message.subject,
         type: message.meta?.type,

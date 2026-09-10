@@ -20,7 +20,7 @@ function createAuthMiddleware(authService, env) {
 
   function requireAuth(req, res, next) {
     if (!req.user) {
-      next(new AppError('Autenticacao obrigatoria.', 401, 'AUTH_REQUIRED'));
+      next(new AppError('Autenticação obrigatória.', 401, 'AUTH_REQUIRED'));
       return;
     }
     next();
@@ -34,7 +34,7 @@ function createAuthMiddleware(authService, env) {
 
     const csrfToken = req.headers['x-csrf-token'];
     if (!csrfToken || hashToken(csrfToken) !== req.session.csrf_token_hash) {
-      next(new AppError('Token CSRF invalido.', 403, 'INVALID_CSRF_TOKEN'));
+      next(new AppError('Token CSRF inválido.', 403, 'INVALID_CSRF_TOKEN'));
       return;
     }
     next();

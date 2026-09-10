@@ -224,12 +224,12 @@ async function handleLogin(event) {
       showAppView('dashboard', { push: true });
       await refreshPrivateData({ initial: true });
       startPolling();
-      showToast('Login realizado com seguranca.', 'success');
+      showToast('Login realizado com segurança.', 'success');
     } catch (error) {
       if (error.code === 'EMAIL_NOT_VERIFIED') {
         state.pendingVerificationEmail = normalizeEmail(els.loginEmailInput.value);
         els.verificationEmailInput.value = state.pendingVerificationEmail;
-        els.verificationMessage.textContent = 'Confirme seu e-mail antes de entrar. Voce pode reenviar o link abaixo.';
+        els.verificationMessage.textContent = 'Confirme seu e-mail antes de entrar. Você pode reenviar o link abaixo.';
         showAuthView('verify', { push: true });
         return;
       }
@@ -258,8 +258,8 @@ async function handleRegister(event) {
       state.pendingVerificationEmail = normalizeEmail(els.registerEmailInput.value);
       els.verificationEmailInput.value = state.pendingVerificationEmail;
       els.verificationMessage.textContent = response.masked_email
-        ? `Enviamos um link de confirmacao para ${response.masked_email}.`
-        : 'Enviamos um link de confirmacao para o endereco informado.';
+        ? `Enviamos um link de confirmação para ${response.masked_email}.`
+        : 'Enviamos um link de confirmação para o endereço informado.';
       showAuthView('verify', { push: true });
       showToast('Cadastro criado. Verifique seu e-mail.', 'success');
       els.registerForm.reset();
@@ -281,7 +281,7 @@ async function handleForgotPassword(event) {
         body: { email: els.forgotEmailInput.value },
         ignoreAuthRedirect: true,
       });
-      showToast('Se o e-mail existir, enviaremos as instrucoes.', 'success');
+      showToast('Se o e-mail existir, enviaremos as instruções.', 'success');
       els.forgotPasswordForm.reset();
     } catch (error) {
       showToast(error.message, 'danger');
@@ -320,7 +320,7 @@ async function verifyEmailFromUrl() {
 
   try {
     await api(`/api/auth/verify-email?token=${encodeURIComponent(token)}`, { ignoreAuthRedirect: true });
-    els.verificationMessage.textContent = 'E-mail confirmado. Agora voce ja pode entrar.';
+    els.verificationMessage.textContent = 'E-mail confirmado. Agora você já pode entrar.';
     showToast('E-mail verificado com sucesso.', 'success');
     history.replaceState({}, '', routes.login);
     setTimeout(() => showAuthView('login', { push: true }), 1000);
@@ -333,7 +333,7 @@ async function verifyEmailFromUrl() {
 async function handleResendVerification() {
   const email = normalizeEmail(els.verificationEmailInput.value || state.pendingVerificationEmail);
   if (!email) {
-    showToast('Informe o e-mail para reenviar a confirmacao.', 'warning');
+    showToast('Informe o e-mail para reenviar a confirmação.', 'warning');
     return;
   }
 
@@ -413,9 +413,9 @@ function renderDashboard(dashboard) {
   const cards = [
     ['Vendas hoje', dashboard.sales_count || 0, 'Total recebido pelo webhook hoje'],
     ['Faturamento', currency.format((dashboard.revenue_cents || 0) / 100), 'Apenas vendas aprovadas'],
-    ['Ticket medio', currency.format((dashboard.average_ticket_cents || 0) / 100), 'Baseado em vendas aprovadas'],
+    ['Ticket médio', currency.format((dashboard.average_ticket_cents || 0) / 100), 'Baseado em vendas aprovadas'],
     ['Vendas aprovadas', dashboard.approved_sales || 0, 'Confirmadas pelo Mercado Pago'],
-    ['Vendas recusadas', dashboard.rejected_sales || 0, 'Nao entram no caixa'],
+    ['Vendas recusadas', dashboard.rejected_sales || 0, 'Não entram no caixa'],
     ['Canceladas/estornadas', `${dashboard.cancelled_sales || 0}/${dashboard.refunded_sales || 0}`, 'Controle operacional'],
   ];
 
@@ -441,7 +441,7 @@ function renderLatestSales() {
     : `
       <div class="empty-state">
         <strong>Nenhuma venda registrada ainda.</strong>
-        <span>Quando uma nova venda cair no Mercado Pago, ela aparecerá automaticamente aqui.</span>
+        <span>Quando uma nova venda for recebida pelo Mercado Pago, ela aparecerá automaticamente aqui.</span>
       </div>
     `;
 }
@@ -453,7 +453,7 @@ function renderSalesList() {
     : `
       <div class="empty-state">
         <strong>Nenhuma venda encontrada.</strong>
-        <span>Ajuste os filtros ou aguarde uma nova notificacao do Mercado Pago.</span>
+        <span>Ajuste os filtros ou aguarde uma nova notificação do Mercado Pago.</span>
       </div>
     `;
 }
@@ -476,7 +476,7 @@ function renderSaleRow(sale) {
         <span>${escapeHtml(terminal)}</span>
       </div>
       <div class="sale-footer">
-        <span class="muted">Transacao ${escapeHtml(transaction)}</span>
+        <span class="muted">Transação ${escapeHtml(transaction)}</span>
         <span class="pill ${statusClass(sale.status)}">${escapeHtml(statusLabel(sale.status))}</span>
       </div>
     </article>
@@ -531,7 +531,7 @@ function renderMercadoPagoStatus() {
         </div>
       </div>
       <dl class="detail-list">
-        <div><dt>Escopo</dt><dd>${escapeHtml(connection.scope || 'Nao informado')}</dd></div>
+        <div><dt>Escopo</dt><dd>${escapeHtml(connection.scope || 'Não informado')}</dd></div>
         <div><dt>Conectado em</dt><dd>${escapeHtml(formatDateTime(connection.connected_at))}</dd></div>
       </dl>
     `
@@ -539,8 +539,8 @@ function renderMercadoPagoStatus() {
       <div class="status-heading">
         <span class="status-dot ${hasFallbackToken ? 'warning' : ''}"></span>
         <div>
-          <strong>Mercado Pago nao conectado</strong>
-          <span>${hasFallbackToken ? 'Ha um Access Token configurado no servidor.' : 'Conecte sua conta pelo OAuth oficial.'}</span>
+          <strong>Mercado Pago não conectado</strong>
+          <span>${hasFallbackToken ? 'Há um Access Token configurado no servidor.' : 'Conecte sua conta pelo OAuth oficial.'}</span>
         </div>
       </div>
     `;
@@ -560,7 +560,7 @@ function renderConnectionSummary() {
       <span class="status-dot ${connected ? 'ok' : ''}"></span>
       <div>
         <strong>Mercado Pago</strong>
-        <span>${connected ? 'Conectado' : 'Nao conectado'}</span>
+        <span>${connected ? 'Conectado' : 'Não conectado'}</span>
       </div>
     </div>
     <div class="connection-line">
@@ -587,7 +587,7 @@ function renderTerminals(terminals, activeTerminal) {
         </div>
       </div>
       <dl class="detail-list">
-        <div><dt>Modo</dt><dd>${escapeHtml(activeTerminal.operating_mode || 'Nao informado')}</dd></div>
+        <div><dt>Modo</dt><dd>${escapeHtml(activeTerminal.operating_mode || 'Não informado')}</dd></div>
         <div><dt>Loja</dt><dd>${escapeHtml(activeTerminal.store_id || '-')}</dd></div>
         <div><dt>Caixa</dt><dd>${escapeHtml(activeTerminal.pos_id || activeTerminal.external_pos_id || '-')}</dd></div>
       </dl>
@@ -609,7 +609,7 @@ function renderTerminals(terminals, activeTerminal) {
               <div>
                 <strong>${escapeHtml(terminal.nickname || 'Point Smart')}</strong>
                 <span>${escapeHtml(terminalId)}</span>
-                <small>Modo: ${escapeHtml(terminal.operating_mode || 'Nao informado')}</small>
+                <small>Modo: ${escapeHtml(terminal.operating_mode || 'Não informado')}</small>
               </div>
               <button class="${isActive ? 'secondary-button' : 'ghost-button'} small" type="button" data-terminal-id="${escapeHtml(terminalId)}">
                 ${isActive ? 'Ativa' : 'Usar'}
@@ -628,7 +628,7 @@ function renderTerminals(terminals, activeTerminal) {
 function renderCashSummary(summary = {}) {
   const entries = [
     ['Faturamento bruto', summary.gross_revenue_cents || 0],
-    ['Cartao', summary.card_cents || 0],
+    ['Cartão', summary.card_cents || 0],
     ['Pix', summary.pix_cents || 0],
     ['Dinheiro', summary.cash_cents || 0],
     ['Total recebido', summary.total_received_cents || 0],
@@ -663,14 +663,14 @@ function renderCashMovements(movements) {
           `,
         )
         .join('')
-    : '<div class="empty-state"><strong>Sem movimentacoes hoje.</strong><span>O caixa recebe apenas vendas aprovadas.</span></div>';
+    : '<div class="empty-state"><strong>Sem movimentações hoje.</strong><span>O caixa recebe apenas vendas aprovadas.</span></div>';
 }
 
 function renderUser() {
   const user = state.user || {};
   const firstName = String(user.name || 'operador').trim().split(/\s+/)[0] || 'operador';
   els.userFirstName.textContent = firstName;
-  els.accountName.textContent = user.name || 'Usuario';
+  els.accountName.textContent = user.name || 'Usuário';
   els.accountEmail.textContent = user.email || '';
   els.accountAvatar.textContent = initials(user.name || user.email || 'BL');
   els.accountVerified.textContent = user.email_verified ? 'E-mail verificado' : 'E-mail pendente';
@@ -682,11 +682,12 @@ function renderPasswordStrength() {
   const rules = {
     length: password.length >= 8,
     uppercase: /[A-Z]/.test(password),
+    lowercase: /[a-z]/.test(password),
     number: /\d/.test(password),
     special: /[^A-Za-z0-9]/.test(password),
   };
   const score = Object.values(rules).filter(Boolean).length;
-  els.passwordStrengthBar.style.width = `${score * 25}%`;
+  els.passwordStrengthBar.style.width = `${score * 20}%`;
   els.passwordStrengthBar.dataset.score = String(score);
 
   Object.entries(rules).forEach(([rule, passed]) => {
@@ -749,7 +750,7 @@ async function testMercadoPagoConnection() {
     try {
       await loadMercadoPagoStatus();
       if (state.mercadoPago?.connected || state.mercadoPago?.env_access_token_configured) {
-        showToast('Conexao Mercado Pago respondendo.', 'success');
+        showToast('Conexão Mercado Pago respondendo.', 'success');
         return;
       }
       showToast('Conecte o Mercado Pago para testar a conta.', 'warning');
@@ -865,7 +866,7 @@ function updateSidebarTerminalState() {
     ? `Point ativa: ${active.nickname || active.mercado_pago_terminal_id}`
     : connected
       ? 'Mercado Pago conectado'
-      : 'Mercado Pago nao conectado';
+      : 'Mercado Pago não conectado';
 }
 
 async function api(path, options = {}) {
@@ -888,10 +889,10 @@ async function api(path, options = {}) {
 
   if (response.status === 401 && !options.ignoreAuthRedirect) {
     showAuthView('login', { push: true });
-    throw createClientError(data, 'Sua sessao expirou. Entre novamente.');
+    throw createClientError(data, 'Sua sessão expirou. Entre novamente.');
   }
 
-  if (!response.ok) throw createClientError(data, 'Falha na comunicacao com o servidor.');
+  if (!response.ok) throw createClientError(data, 'Falha na comunicação com o servidor.');
   return data || {};
 }
 
@@ -947,14 +948,14 @@ function paymentLabel(sale) {
   const brand = brandName(methodId);
 
   if (sale.payment_method === 'PIX' || type.includes('pix') || type === 'qr') return 'Pix';
-  if (type.includes('debit')) return brand ? `Debito • ${brand}` : 'Debito';
-  if (type.includes('credit')) return brand ? `Credito • ${brand}` : 'Credito';
-  if (sale.payment_method === 'CARD') return brand ? `Cartao • ${brand}` : 'Cartao';
+  if (type.includes('debit')) return brand ? `Débito • ${brand}` : 'Débito';
+  if (type.includes('credit')) return brand ? `Crédito • ${brand}` : 'Crédito';
+  if (sale.payment_method === 'CARD') return brand ? `Cartão • ${brand}` : 'Cartão';
   return sale.payment_method || 'Mercado Pago';
 }
 
 function paymentMethodName(value) {
-  if (value === 'CARD') return 'Cartao';
+  if (value === 'CARD') return 'Cartão';
   if (value === 'PIX') return 'Pix';
   if (value === 'CASH') return 'Dinheiro';
   return value || '-';
@@ -1082,5 +1083,5 @@ function showToast(message, type = 'success') {
 function showFatal(message) {
   els.authShell?.classList.remove('hidden');
   els.appShell?.classList.add('hidden');
-  showToast(message || 'Nao foi possivel iniciar o sistema.', 'danger');
+  showToast(message || 'Não foi possível iniciar o sistema.', 'danger');
 }

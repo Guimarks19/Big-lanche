@@ -32,12 +32,12 @@ class AuthService {
       throw new AppError('Informe seu nome.', 400, 'INVALID_NAME');
     }
     if (password !== confirmation) {
-      throw new AppError('As senhas nao conferem.', 400, 'PASSWORD_CONFIRMATION_MISMATCH');
+      throw new AppError('As senhas não conferem.', 400, 'PASSWORD_CONFIRMATION_MISMATCH');
     }
     assertStrongPassword(password);
 
     const existing = await get(this.db, 'SELECT id FROM users WHERE email = ?', [email]);
-    if (existing) throw new AppError('Este e-mail ja esta cadastrado.', 409, 'EMAIL_ALREADY_EXISTS');
+    if (existing) throw new AppError('Este e-mail já está cadastrado.', 409, 'EMAIL_ALREADY_EXISTS');
 
     const passwordHash = await bcrypt.hash(password, this.env.BCRYPT_ROUNDS);
     const userId = await insert(
@@ -62,12 +62,12 @@ class AuthService {
     const userRow = await get(this.db, 'SELECT * FROM users WHERE email = ?', [email]);
 
     if (!userRow || !userRow.password_hash) {
-      throw new AppError('E-mail ou senha invalidos.', 401, 'INVALID_CREDENTIALS');
+      throw new AppError('E-mail ou senha inválidos.', 401, 'INVALID_CREDENTIALS');
     }
 
     const valid = await bcrypt.compare(password, userRow.password_hash);
-    if (!valid) throw new AppError('E-mail ou senha invalidos.', 401, 'INVALID_CREDENTIALS');
-    if (!userRow.active) throw new AppError('Usuario inativo.', 403, 'USER_INACTIVE');
+    if (!valid) throw new AppError('E-mail ou senha inválidos.', 401, 'INVALID_CREDENTIALS');
+    if (!userRow.active) throw new AppError('Usuário inativo.', 403, 'USER_INACTIVE');
     if (!Boolean(userRow.email_verified)) {
       throw new AppError('Confirme seu e-mail antes de entrar.', 403, 'EMAIL_NOT_VERIFIED');
     }
@@ -169,7 +169,7 @@ class AuthService {
       [tokenHash, toSqlDate(new Date())],
     );
 
-    if (!tokenRow) throw new AppError('Token de verificacao invalido ou expirado.', 400, 'INVALID_VERIFICATION_TOKEN');
+    if (!tokenRow) throw new AppError('Token de verificação inválido ou expirado.', 400, 'INVALID_VERIFICATION_TOKEN');
 
     await withTransaction(this.db, async (tx) => {
       await run(
@@ -223,7 +223,7 @@ class AuthService {
 
   async resetPassword(token, password, confirmation) {
     if (String(password || '') !== String(confirmation || '')) {
-      throw new AppError('As senhas nao conferem.', 400, 'PASSWORD_CONFIRMATION_MISMATCH');
+      throw new AppError('As senhas não conferem.', 400, 'PASSWORD_CONFIRMATION_MISMATCH');
     }
     assertStrongPassword(password);
 
@@ -234,7 +234,7 @@ class AuthService {
        LIMIT 1`,
       [hashToken(token || ''), toSqlDate(new Date())],
     );
-    if (!tokenRow) throw new AppError('Token de redefinicao invalido ou expirado.', 400, 'INVALID_RESET_TOKEN');
+    if (!tokenRow) throw new AppError('Token de redefinição inválido ou expirado.', 400, 'INVALID_RESET_TOKEN');
 
     const passwordHash = await bcrypt.hash(password, this.env.BCRYPT_ROUNDS);
 
@@ -265,7 +265,7 @@ class AuthService {
 
   async getUserById(id) {
     const row = await get(this.db, 'SELECT * FROM users WHERE id = ?', [Number(id)]);
-    if (!row) throw new AppError('Usuario nao encontrado.', 404, 'USER_NOT_FOUND');
+    if (!row) throw new AppError('Usuário não encontrado.', 404, 'USER_NOT_FOUND');
     return serializeUser(row);
   }
 

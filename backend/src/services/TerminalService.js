@@ -122,7 +122,7 @@ class TerminalService {
 
   async setupMode(providerTerminalId, operatingMode, userId = null) {
     if (operatingMode !== 'PDV') {
-      throw new AppError('Para integracao automatica, o modo deve ser PDV.', 400, 'INVALID_TERMINAL_MODE');
+      throw new AppError('Para integração automática, o modo deve ser PDV.', 400, 'INVALID_TERMINAL_MODE');
     }
 
     const accessToken = userId && this.connectionService ? await this.connectionService.getAccessTokenForUser(userId) : null;

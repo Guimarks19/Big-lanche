@@ -183,7 +183,7 @@ class MercadoPagoProvider {
 
     if (!response.ok) {
       throw new MercadoPagoError(
-        data?.message || data?.error || 'Falha na comunicacao com Mercado Pago.',
+        data?.message || data?.error || 'Falha na comunicação com Mercado Pago.',
         response.status,
         data?.error || 'MERCADOPAGO_REQUEST_FAILED',
         data,
@@ -204,7 +204,7 @@ class MercadoPagoProvider {
     const data = raw ? tryParseJson(raw) : null;
     if (!response.ok) {
       throw new MercadoPagoError(
-        data?.message || data?.error || 'Falha na comunicacao com Mercado Pago.',
+        data?.message || data?.error || 'Falha na comunicação com Mercado Pago.',
         response.status,
         data?.error || 'MERCADOPAGO_REQUEST_FAILED',
         data,
@@ -227,7 +227,7 @@ class MercadoPagoProvider {
 function buildSaleExternalReference(saleId) {
   const normalized = Number(saleId);
   if (!Number.isInteger(normalized) || normalized <= 0) {
-    throw new AppError('ID da venda invalido para external_reference.', 400, 'INVALID_SALE_ID');
+    throw new AppError('ID da venda inválido para external_reference.', 400, 'INVALID_SALE_ID');
   }
   return `VENDA_${normalized}`;
 }

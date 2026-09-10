@@ -22,7 +22,7 @@ class PaymentService {
       throw new AppError('Apenas vendas pendentes podem iniciar pagamento.', 409, 'SALE_NOT_PENDING');
     }
     if (paymentMethod !== sale.payment_method) {
-      throw new AppError('Metodo de pagamento diferente do informado na venda.', 400, 'PAYMENT_METHOD_MISMATCH');
+      throw new AppError('Método de pagamento diferente do informado na venda.', 400, 'PAYMENT_METHOD_MISMATCH');
     }
     if (sale.provider_order_id) {
       return this.saleService.getSale(sale.id, context);
@@ -78,7 +78,7 @@ class PaymentService {
       );
     }
 
-    // O terminal ativo pode vir da conexao OAuth do usuario e e resolvido em startPayment.
+    // O terminal ativo pode vir da conexão OAuth do usuário e é resolvido em startPayment.
   }
 
   async getConfiguredTerminalId(userId = null) {
@@ -199,7 +199,7 @@ class PaymentService {
     }
 
     if (order?.type && order.type !== 'point') {
-      throw new AppError('Order recebida nao e do Mercado Pago Point.', 400, 'PROVIDER_ORDER_NOT_POINT');
+      throw new AppError('Order recebida não é do Mercado Pago Point.', 400, 'PROVIDER_ORDER_NOT_POINT');
     }
 
     const payment = extractPrimaryPayment(order);
@@ -207,7 +207,7 @@ class PaymentService {
     const totalCents = extractProviderAmountCents(order, payment);
     if (!Number.isInteger(totalCents) || totalCents <= 0) {
       throw new AppError(
-        'Order do Mercado Pago sem valor valido para cadastro de venda.',
+        'Order do Mercado Pago sem valor válido para cadastro de venda.',
         400,
         'PROVIDER_ORDER_AMOUNT_REQUIRED',
       );
@@ -359,7 +359,7 @@ class PaymentService {
     if (paymentMethod === 'PIX') {
       if (!this.env.MERCADOPAGO_ENABLE_QR) {
         throw new AppError(
-          'Pix/QR no Point esta desabilitado. Habilite somente apos validar suporte da sua conta e terminal.',
+          'Pix/QR no Point está desabilitado. Habilite somente após validar o suporte da sua conta e do terminal.',
           400,
           'PIX_QR_NOT_ENABLED',
         );
@@ -367,7 +367,7 @@ class PaymentService {
       return 'qr';
     }
 
-    throw new AppError('Metodo de pagamento invalido.', 400, 'INVALID_PAYMENT_METHOD');
+    throw new AppError('Método de pagamento inválido.', 400, 'INVALID_PAYMENT_METHOD');
   }
 }
 

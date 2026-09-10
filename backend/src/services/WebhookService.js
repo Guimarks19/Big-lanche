@@ -20,7 +20,7 @@ class WebhookService {
     const mercadoPagoUserId = req.body?.user_id || req.query?.user_id || null;
 
     if (!orderId) {
-      console.info('[MercadoPagoWebhook] Notificacao recebida sem orderId.', {
+      console.info('[MercadoPagoWebhook] Notificação recebida sem orderId.', {
         action,
         type,
         request_id: requestId,
@@ -29,7 +29,7 @@ class WebhookService {
     }
 
     if (type !== 'order') {
-      console.info('[MercadoPagoWebhook] Notificacao ignorada: type diferente de order.', {
+      console.info('[MercadoPagoWebhook] Notificação ignorada: type diferente de order.', {
         action,
         type,
         order_id: orderId,
@@ -48,14 +48,14 @@ class WebhookService {
         mercadoPagoUserId,
       });
 
-      console.info('[MercadoPagoWebhook] Simulacao recebida sem ID real de order.', {
+      console.info('[MercadoPagoWebhook] Simulação recebida sem ID real de order.', {
         action,
         data_id: dataId,
         embedded_status: embeddedOrder?.status || null,
         embedded_external_reference: embeddedOrder?.external_reference || null,
         request_id: requestId,
       });
-      await this.markEvent(event.id, 'IGNORED', `Simulacao sem order real: ${dataId}`);
+      await this.markEvent(event.id, 'IGNORED', `Simulação sem order real: ${dataId}`);
       return { received: true, ignored: true, simulation: true, reason: 'SIMULATED_ORDER_ID' };
     }
 
@@ -67,12 +67,12 @@ class WebhookService {
       });
     } catch (error) {
       if (error instanceof InvalidWebhookSignatureError) {
-        console.warn('[MercadoPagoWebhook] Assinatura invalida.', {
+        console.warn('[MercadoPagoWebhook] Assinatura inválida.', {
           action,
           data_id: signatureDataId,
           request_id: requestId,
         });
-        throw new AppError('Assinatura do Webhook invalida.', 401, 'INVALID_WEBHOOK_SIGNATURE');
+        throw new AppError('Assinatura do Webhook inválida.', 401, 'INVALID_WEBHOOK_SIGNATURE');
       }
       throw error;
     }
@@ -91,7 +91,7 @@ class WebhookService {
     });
 
     if (event.duplicate && event.status === 'PROCESSED') {
-      console.info('[MercadoPagoWebhook] Notificacao duplicada ja processada.', {
+      console.info('[MercadoPagoWebhook] Notificação duplicada já processada.', {
         action,
         data_id: dataId,
         request_id: requestId,
@@ -120,7 +120,7 @@ class WebhookService {
       return { received: true, sale };
     } catch (error) {
       if (shouldIgnoreWebhookError(error, { dataId, embeddedOrder })) {
-        console.info('[MercadoPagoWebhook] Order nao processada, mas webhook recebido com sucesso.', {
+        console.info('[MercadoPagoWebhook] Order não processada, mas webhook recebido com sucesso.', {
           action,
           data_id: dataId,
           error_code: error.code || error.name,

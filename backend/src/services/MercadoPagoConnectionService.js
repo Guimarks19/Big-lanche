@@ -46,7 +46,7 @@ class MercadoPagoConnectionService {
        LIMIT 1`,
       [hashToken(state), toSqlDate(new Date())],
     );
-    if (!stateRow) throw new AppError('State OAuth invalido ou expirado.', 400, 'OAUTH_STATE_INVALID');
+    if (!stateRow) throw new AppError('State OAuth inválido ou expirado.', 400, 'OAUTH_STATE_INVALID');
 
     const tokenResponse = await this.provider.exchangeOAuthCode({
       code,

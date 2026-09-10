@@ -44,7 +44,7 @@ class SaleService {
     const sale = context.userId
       ? await get(this.db, 'SELECT * FROM sales WHERE id = ? AND user_id = ?', [Number(id), context.userId])
       : await get(this.db, 'SELECT * FROM sales WHERE id = ?', [Number(id)]);
-    if (!sale) throw new AppError('Venda nao encontrada.', 404, 'SALE_NOT_FOUND');
+    if (!sale) throw new AppError('Venda não encontrada.', 404, 'SALE_NOT_FOUND');
     return this.serializeSale(sale);
   }
 
@@ -151,7 +151,7 @@ class SaleService {
 function normalizePaymentMethod(method) {
   const normalized = String(method || '').trim().toUpperCase();
   if (normalized !== 'CARD' && normalized !== 'PIX') {
-    throw new AppError('Metodo de pagamento invalido.', 400, 'INVALID_PAYMENT_METHOD');
+    throw new AppError('Método de pagamento inválido.', 400, 'INVALID_PAYMENT_METHOD');
   }
   return normalized;
 }
