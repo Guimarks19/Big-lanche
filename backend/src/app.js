@@ -28,7 +28,7 @@ async function createApp(options = {}) {
   const db = options.db || createDatabase(env.DATABASE_PATH, { env });
 
   if (options.migrate !== false) await migrate(db);
-  if (options.seed === true) await seed(db);
+  if (options.seed === true) await seed(db, env);
 
   const emailService = options.emailService || new EmailService(env, options.mailTransport);
   const authService = new AuthService(db, emailService, env);

@@ -42,7 +42,7 @@ class FakeMercadoPagoProvider {
 
   async createPointOrder(input) {
     if (this.failCreate) {
-      throw new MercadoPagoError('Falha simulada de comunicacao.', 502, 'MP_COMMUNICATION_FAILED');
+      throw new MercadoPagoError('Falha simulada de comunicação.', 502, 'MP_COMMUNICATION_FAILED');
     }
 
     this.lastCreatedOrderInput = input;
@@ -94,7 +94,7 @@ class FakeMercadoPagoProvider {
   async getOrder(orderId) {
     this.getOrderCalls.push(orderId);
     const order = this.orders.get(orderId);
-    if (!order) throw new MercadoPagoError('Order nao encontrada.', 404, 'order_not_found');
+    if (!order) throw new MercadoPagoError('Order não encontrada.', 404, 'order_not_found');
     return order;
   }
 
@@ -267,7 +267,7 @@ test('cria uma venda pendente somente por valor', async (t) => {
   assert.equal(sale.external_reference, `VENDA_${sale.id}`);
 });
 
-test('checkout automatico cria venda e envia cobranca em uma unica chamada', async (t) => {
+test('checkout automático cria venda e envia cobrança em uma única chamada', async (t) => {
   const { db, http, provider } = await setup();
   t.after(() => db.close());
 
@@ -285,7 +285,7 @@ test('checkout automatico cria venda e envia cobranca em uma unica chamada', asy
   assert.equal((await get(db, 'SELECT COUNT(*) AS count FROM payments')).count, 1);
 });
 
-test('cadastro local da maquininha passa a ser usado nas cobrancas', async (t) => {
+test('cadastro local da maquininha passa a ser usado nas cobranças', async (t) => {
   const { db, http, provider } = await setup({ MERCADO_PAGO_TERMINAL_ID: '' });
   t.after(() => db.close());
 
@@ -355,7 +355,41 @@ test('salva credenciais Mercado Pago no backend com retorno mascarado', async (t
   assert.equal(config.body.mercadopago.terminal_id, 'NEWLAND_N950__SERIAL_CFG');
 });
 
-test('cria pagamento no Mercado Pago e mantem venda pendente', async (t) => {
+test('seed cria conta admin verificada usando variáveis de ambiente', async (t) => {
+  const db = createDatabase(':memory:');
+  const provider = new FakeMercadoPagoProvider();
+  t.after(() => db.close());
+
+  const password = 'AdminSenhaTeste123!';
+  const app = await createApp({
+    db,
+    seed: true,
+    mercadoPagoProvider: provider,
+    env: {
+      NODE_ENV: 'test',
+      ADMIN_NAME: 'Guilherme Marques 6Q',
+      ADMIN_EMAIL: 'guilhermemarques6q@gmail.com',
+      ADMIN_PASSWORD: password,
+      MERCADO_PAGO_ACCESS_TOKEN: 'TEST_TOKEN',
+      MERCADO_PAGO_TERMINAL_ID: 'NEWLAND_N950__SBX0000001',
+      MERCADOPAGO_WEBHOOK_SIGNATURE_REQUIRED: 'false',
+    },
+  });
+
+  const http = request.agent(app);
+  const login = await http.post('/api/auth/login').send({
+    email: 'guilhermemarques6q@gmail.com',
+    password,
+  });
+  const admin = await get(db, 'SELECT * FROM users WHERE email = ?', ['guilhermemarques6q@gmail.com']);
+
+  assert.equal(login.status, 200);
+  assert.equal(login.body.user.role, 'admin');
+  assert.equal(login.body.user.email_verified, true);
+  assert.notEqual(admin.password_hash, password);
+});
+
+test('cria pagamento no Mercado Pago e mantém venda pendente', async (t) => {
   const { db, http, provider } = await setup();
   t.after(() => db.close());
 
@@ -399,7 +433,7 @@ test('dashboard contabiliza venda aprovada do dia', async (t) => {
   assert.equal(response.body.dashboard.average_ticket_cents, 1500);
 });
 
-test('pagamento recusado nao contabiliza caixa', async (t) => {
+test('pagamento recusado não contabiliza caixa', async (t) => {
   const { db, http, provider } = await setup();
   t.after(() => db.close());
 
@@ -412,7 +446,7 @@ test('pagamento recusado nao contabiliza caixa', async (t) => {
   assert.equal((await get(db, 'SELECT COUNT(*) AS count FROM cash_movements')).count, 0);
 });
 
-test('pagamento cancelado nao contabiliza caixa', async (t) => {
+test('pagamento cancelado não contabiliza caixa', async (t) => {
   const { db, http, provider } = await setup();
   t.after(() => db.close());
 
@@ -445,7 +479,7 @@ test('webhook recebido confirma order consultando provider', async (t) => {
   assert.equal(response.body.sale.status, 'APPROVED');
 });
 
-test('webhook duplicado nao duplica caixa', async (t) => {
+test('webhook duplicado não duplica caixa', async (t) => {
   const { db, http, provider } = await setup();
   t.after(() => db.close());
 
@@ -490,7 +524,7 @@ test('webhook de venda feita na Point cria venda local automaticamente', async (
   assert.equal((await get(db, "SELECT COUNT(*) AS count FROM cash_movements WHERE type = 'SALE'")).count, 1);
 });
 
-test('webhook repetido de venda direta nao duplica venda nem caixa', async (t) => {
+test('webhook repetido de venda direta não duplica venda nem caixa', async (t) => {
   const { db, http, provider } = await setup();
   t.after(() => db.close());
 
@@ -513,7 +547,7 @@ test('webhook repetido de venda direta nao duplica venda nem caixa', async (t) =
   assert.equal((await get(db, "SELECT COUNT(*) AS count FROM cash_movements WHERE type = 'SALE'")).count, 1);
 });
 
-test('webhook do simulador com data.id numerico retorna 200 sem consultar order fake', async (t) => {
+test('webhook do simulador com data.id numérico retorna 200 sem consultar order fake', async (t) => {
   const { db, http, provider } = await setup();
   t.after(() => db.close());
 
@@ -555,7 +589,7 @@ test('webhook do simulador aceita type e data.id somente pela query string', asy
   assert.equal((await get(db, 'SELECT COUNT(*) AS count FROM sales')).count, 0);
 });
 
-test('webhook do simulador nao falha quando assinatura nao pode ser validada localmente', async (t) => {
+test('webhook do simulador não falha quando assinatura não pode ser validada localmente', async (t) => {
   const { db, http, provider } = await setup();
   t.after(() => db.close());
   provider.validateError = new AppError(
@@ -589,7 +623,7 @@ test('webhook sem body e sem orderId retorna 200', async (t) => {
   assert.equal((await get(db, 'SELECT COUNT(*) AS count FROM sales')).count, 0);
 });
 
-test('webhook usa req.body.data.id quando ele contem uma order real', async (t) => {
+test('webhook usa req.body.data.id quando ele contém uma order real', async (t) => {
   const { db, http, provider } = await setup();
   t.after(() => db.close());
 
@@ -629,7 +663,7 @@ test('webhook com order inexistente na API oficial e ignorado sem venda local', 
   assert.equal((await get(db, 'SELECT COUNT(*) AS count FROM sales')).count, 0);
 });
 
-test('valor divergente nao aprova venda', async (t) => {
+test('valor divergente não aprova venda', async (t) => {
   const { db, http, provider } = await setup();
   t.after(() => db.close());
 
@@ -643,7 +677,7 @@ test('valor divergente nao aprova venda', async (t) => {
   assert.equal((await get(db, 'SELECT COUNT(*) AS count FROM cash_movements')).count, 0);
 });
 
-test('aprovacao repetida contabiliza caixa apenas uma vez', async (t) => {
+test('aprovação repetida contabiliza caixa apenas uma vez', async (t) => {
   const { db, http, provider } = await setup();
   t.after(() => db.close());
 
@@ -678,7 +712,7 @@ test('fechamento de caixa usa somente vendas aprovadas', async (t) => {
   assert.equal(summary.body.summary.sales.rejected, 1);
 });
 
-test('erro de comunicacao com Mercado Pago nao marca venda como paga', async (t) => {
+test('erro de comunicação com Mercado Pago não marca venda como paga', async (t) => {
   const { db, http, provider } = await setup();
   t.after(() => db.close());
 
