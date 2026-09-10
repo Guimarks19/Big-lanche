@@ -125,10 +125,10 @@ class FakeMercadoPagoProvider {
   }
 }
 
-function setup(env = {}, options = {}) {
+async function setup(env = {}, options = {}) {
   const db = createDatabase(':memory:');
   const provider = new FakeMercadoPagoProvider();
-  const app = createApp({
+  const app = await createApp({
     db,
     seed: false,
     mercadoPagoProvider: provider,
@@ -143,7 +143,45 @@ function setup(env = {}, options = {}) {
     },
   });
 
-  return { app, db, provider, http: request(app) };
+  const http = request.agent(app);
+  const csrf = await registerAndLogin(app, http);
+  attachCsrf(http, csrf);
+
+  return { app, db, provider, http, csrf };
+}
+
+async function registerAndLogin(app, http) {
+  const email = `teste-${Date.now()}-${Math.random().toString(16).slice(2)}@biglanche.test`;
+  const password = 'SenhaForte123';
+
+  const register = await http.post('/api/auth/register').send({
+    name: 'Dono Big Lanche',
+    email,
+    password,
+    password_confirmation: password,
+  });
+  assert.equal(register.status, 201);
+
+  const verificationEmail = app.locals.services.emailService.outbox.find(
+    (message) => message.meta?.type === 'email_verification' && message.to === email,
+  );
+  assert.ok(verificationEmail?.meta?.url);
+
+  const token = new URL(verificationEmail.meta.url).searchParams.get('token');
+  const verify = await http.get(`/api/auth/verify-email?token=${encodeURIComponent(token)}`);
+  assert.equal(verify.status, 200);
+
+  const login = await http.post('/api/auth/login').send({ email, password });
+  assert.equal(login.status, 200);
+  assert.ok(login.body.csrf_token);
+  return login.body.csrf_token;
+}
+
+function attachCsrf(http, csrf) {
+  for (const method of ['post', 'put', 'patch', 'delete']) {
+    const original = http[method].bind(http);
+    http[method] = (url) => original(url).set('x-csrf-token', csrf);
+  }
 }
 
 function createTempEnvFile(t) {
@@ -218,7 +256,7 @@ async function createSaleAndPayment(http, paymentMethod = 'CARD', amountCents = 
 }
 
 test('cria uma venda pendente somente por valor', async (t) => {
-  const { db, http } = setup();
+  const { db, http } = await setup();
   t.after(() => db.close());
 
   const sale = await createSale(http);
@@ -230,7 +268,7 @@ test('cria uma venda pendente somente por valor', async (t) => {
 });
 
 test('checkout automatico cria venda e envia cobranca em uma unica chamada', async (t) => {
-  const { db, http, provider } = setup();
+  const { db, http, provider } = await setup();
   t.after(() => db.close());
 
   const response = await http.post('/api/checkout/point').send({
@@ -243,12 +281,12 @@ test('checkout automatico cria venda e envia cobranca em uma unica chamada', asy
   assert.equal(response.body.sale.provider_order_id, 'ORD_TEST_1');
   assert.equal(provider.lastCreatedOrderInput.terminalId, 'NEWLAND_N950__SBX0000001');
   assert.equal(provider.lastCreatedOrderInput.externalReference, `VENDA_${response.body.sale.id}`);
-  assert.equal(get(db, 'SELECT COUNT(*) AS count FROM sales').count, 1);
-  assert.equal(get(db, 'SELECT COUNT(*) AS count FROM payments').count, 1);
+  assert.equal((await get(db, 'SELECT COUNT(*) AS count FROM sales')).count, 1);
+  assert.equal((await get(db, 'SELECT COUNT(*) AS count FROM payments')).count, 1);
 });
 
 test('cadastro local da maquininha passa a ser usado nas cobrancas', async (t) => {
-  const { db, http, provider } = setup({ MERCADO_PAGO_TERMINAL_ID: '' });
+  const { db, http, provider } = await setup({ MERCADO_PAGO_TERMINAL_ID: '' });
   t.after(() => db.close());
 
   const terminal = await http
@@ -266,18 +304,21 @@ test('cadastro local da maquininha passa a ser usado nas cobrancas', async (t) =
 });
 
 test('sincroniza terminais oficiais da conta', async (t) => {
-  const { db, http } = setup();
+  const { db, http } = await setup();
   t.after(() => db.close());
 
   const response = await http.get('/api/terminals?sync=true');
 
   assert.equal(response.status, 200);
-  assert.equal(response.body.terminals[0].provider_terminal_id, 'NEWLAND_N950__SBX0000001');
+  assert.equal(
+    response.body.terminals[0].mercado_pago_terminal_id || response.body.terminals[0].provider_terminal_id,
+    'NEWLAND_N950__SBX0000001',
+  );
 });
 
 test('salva credenciais Mercado Pago no backend com retorno mascarado', async (t) => {
   const envFilePath = createTempEnvFile(t);
-  const { db, http } = setup(
+  const { db, http } = await setup(
     {
       MERCADO_PAGO_PUBLIC_KEY: '',
       MERCADO_PAGO_ACCESS_TOKEN: '',
@@ -315,7 +356,7 @@ test('salva credenciais Mercado Pago no backend com retorno mascarado', async (t
 });
 
 test('cria pagamento no Mercado Pago e mantem venda pendente', async (t) => {
-  const { db, http, provider } = setup();
+  const { db, http, provider } = await setup();
   t.after(() => db.close());
 
   const sale = await createSaleAndPayment(http);
@@ -323,11 +364,11 @@ test('cria pagamento no Mercado Pago e mantem venda pendente', async (t) => {
   assert.equal(sale.status, 'PENDING');
   assert.equal(sale.provider_order_id, 'ORD_TEST_1');
   assert.equal(provider.orders.size, 1);
-  assert.equal(get(db, 'SELECT COUNT(*) AS count FROM payments').count, 1);
+  assert.equal((await get(db, 'SELECT COUNT(*) AS count FROM payments')).count, 1);
 });
 
 test('pagamento aprovado contabiliza caixa', async (t) => {
-  const { db, http, provider } = setup();
+  const { db, http, provider } = await setup();
   t.after(() => db.close());
 
   const sale = await createSaleAndPayment(http);
@@ -337,11 +378,29 @@ test('pagamento aprovado contabiliza caixa', async (t) => {
 
   assert.equal(response.status, 200);
   assert.equal(response.body.sale.status, 'APPROVED');
-  assert.equal(get(db, 'SELECT SUM(amount_cents) AS total FROM cash_movements').total, 1500);
+  assert.equal((await get(db, 'SELECT SUM(amount_cents) AS total FROM cash_movements')).total, 1500);
+});
+
+test('dashboard contabiliza venda aprovada do dia', async (t) => {
+  const { db, http, provider } = await setup();
+  t.after(() => db.close());
+
+  const sale = await createSaleAndPayment(http);
+  provider.setStatus(sale.provider_order_id, 'processed', 'processed', { amount: '15.00' });
+  await http.get(`/api/sales/${sale.id}/status`);
+
+  const response = await http.get('/api/dashboard');
+
+  assert.equal(response.status, 200);
+  assert.equal(response.body.dashboard.sales_count, 1);
+  assert.equal(response.body.dashboard.approved_sales, 1);
+  assert.equal(response.body.dashboard.revenue_cents, 1500);
+  assert.equal(response.body.dashboard.card_cents, 1500);
+  assert.equal(response.body.dashboard.average_ticket_cents, 1500);
 });
 
 test('pagamento recusado nao contabiliza caixa', async (t) => {
-  const { db, http, provider } = setup();
+  const { db, http, provider } = await setup();
   t.after(() => db.close());
 
   const sale = await createSaleAndPayment(http);
@@ -350,11 +409,11 @@ test('pagamento recusado nao contabiliza caixa', async (t) => {
   const response = await http.get(`/api/sales/${sale.id}/status`);
 
   assert.equal(response.body.sale.status, 'REJECTED');
-  assert.equal(get(db, 'SELECT COUNT(*) AS count FROM cash_movements').count, 0);
+  assert.equal((await get(db, 'SELECT COUNT(*) AS count FROM cash_movements')).count, 0);
 });
 
 test('pagamento cancelado nao contabiliza caixa', async (t) => {
-  const { db, http, provider } = setup();
+  const { db, http, provider } = await setup();
   t.after(() => db.close());
 
   const sale = await createSaleAndPayment(http);
@@ -363,11 +422,11 @@ test('pagamento cancelado nao contabiliza caixa', async (t) => {
   const response = await http.get(`/api/sales/${sale.id}/status`);
 
   assert.equal(response.body.sale.status, 'CANCELLED');
-  assert.equal(get(db, 'SELECT COUNT(*) AS count FROM cash_movements').count, 0);
+  assert.equal((await get(db, 'SELECT COUNT(*) AS count FROM cash_movements')).count, 0);
 });
 
 test('webhook recebido confirma order consultando provider', async (t) => {
-  const { db, http, provider } = setup();
+  const { db, http, provider } = await setup();
   t.after(() => db.close());
 
   const sale = await createSaleAndPayment(http);
@@ -387,7 +446,7 @@ test('webhook recebido confirma order consultando provider', async (t) => {
 });
 
 test('webhook duplicado nao duplica caixa', async (t) => {
-  const { db, http, provider } = setup();
+  const { db, http, provider } = await setup();
   t.after(() => db.close());
 
   const sale = await createSaleAndPayment(http);
@@ -407,11 +466,11 @@ test('webhook duplicado nao duplica caixa', async (t) => {
 
   assert.equal(second.status, 200);
   assert.equal(second.body.duplicate, true);
-  assert.equal(get(db, "SELECT COUNT(*) AS count FROM cash_movements WHERE type = 'SALE'").count, 1);
+  assert.equal((await get(db, "SELECT COUNT(*) AS count FROM cash_movements WHERE type = 'SALE'")).count, 1);
 });
 
 test('webhook de venda feita na Point cria venda local automaticamente', async (t) => {
-  const { db, http, provider } = setup();
+  const { db, http, provider } = await setup();
   t.after(() => db.close());
 
   provider.orders.set('ORD_DIRECT_1', buildPointOrder());
@@ -427,12 +486,12 @@ test('webhook de venda feita na Point cria venda local automaticamente', async (
   assert.equal(response.body.sale.payment.transaction_id, 'PAY_DIRECT_1');
   assert.equal(response.body.sale.payment.installments, 1);
   assert.equal(response.body.sale.payment.provider_terminal_id, 'NEWLAND_N950__DIRECT001');
-  assert.equal(get(db, "SELECT COUNT(*) AS count FROM sales WHERE status = 'APPROVED'").count, 1);
-  assert.equal(get(db, "SELECT COUNT(*) AS count FROM cash_movements WHERE type = 'SALE'").count, 1);
+  assert.equal((await get(db, "SELECT COUNT(*) AS count FROM sales WHERE status = 'APPROVED'")).count, 1);
+  assert.equal((await get(db, "SELECT COUNT(*) AS count FROM cash_movements WHERE type = 'SALE'")).count, 1);
 });
 
 test('webhook repetido de venda direta nao duplica venda nem caixa', async (t) => {
-  const { db, http, provider } = setup();
+  const { db, http, provider } = await setup();
   t.after(() => db.close());
 
   provider.orders.set('ORD_DIRECT_DUP', buildPointOrder({ id: 'ORD_DIRECT_DUP', paymentId: 'PAY_DIRECT_DUP' }));
@@ -449,13 +508,13 @@ test('webhook repetido de venda direta nao duplica venda nem caixa', async (t) =
 
   assert.equal(second.status, 200);
   assert.equal(second.body.duplicate, true);
-  assert.equal(get(db, 'SELECT COUNT(*) AS count FROM sales').count, 1);
-  assert.equal(get(db, 'SELECT COUNT(*) AS count FROM payments').count, 1);
-  assert.equal(get(db, "SELECT COUNT(*) AS count FROM cash_movements WHERE type = 'SALE'").count, 1);
+  assert.equal((await get(db, 'SELECT COUNT(*) AS count FROM sales')).count, 1);
+  assert.equal((await get(db, 'SELECT COUNT(*) AS count FROM payments')).count, 1);
+  assert.equal((await get(db, "SELECT COUNT(*) AS count FROM cash_movements WHERE type = 'SALE'")).count, 1);
 });
 
 test('webhook do simulador com data.id numerico retorna 200 sem consultar order fake', async (t) => {
-  const { db, http, provider } = setup();
+  const { db, http, provider } = await setup();
   t.after(() => db.close());
 
   const response = await http
@@ -476,11 +535,11 @@ test('webhook do simulador com data.id numerico retorna 200 sem consultar order 
   assert.equal(response.body.simulation, true);
   assert.equal(response.body.reason, 'SIMULATED_ORDER_ID');
   assert.deepEqual(provider.getOrderCalls, []);
-  assert.equal(get(db, 'SELECT COUNT(*) AS count FROM sales').count, 0);
+  assert.equal((await get(db, 'SELECT COUNT(*) AS count FROM sales')).count, 0);
 });
 
 test('webhook do simulador aceita type e data.id somente pela query string', async (t) => {
-  const { db, http, provider } = setup();
+  const { db, http, provider } = await setup();
   t.after(() => db.close());
 
   const response = await http
@@ -493,11 +552,11 @@ test('webhook do simulador aceita type e data.id somente pela query string', asy
   assert.equal(response.body.simulation, true);
   assert.equal(response.body.reason, 'SIMULATED_ORDER_ID');
   assert.deepEqual(provider.getOrderCalls, []);
-  assert.equal(get(db, 'SELECT COUNT(*) AS count FROM sales').count, 0);
+  assert.equal((await get(db, 'SELECT COUNT(*) AS count FROM sales')).count, 0);
 });
 
 test('webhook do simulador nao falha quando assinatura nao pode ser validada localmente', async (t) => {
-  const { db, http, provider } = setup();
+  const { db, http, provider } = await setup();
   t.after(() => db.close());
   provider.validateError = new AppError(
     'Configure MERCADO_PAGO_WEBHOOK_SECRET para validar Webhooks.',
@@ -516,7 +575,7 @@ test('webhook do simulador nao falha quando assinatura nao pode ser validada loc
 });
 
 test('webhook sem body e sem orderId retorna 200', async (t) => {
-  const { db, http, provider } = setup();
+  const { db, http, provider } = await setup();
   t.after(() => db.close());
 
   const response = await http
@@ -527,11 +586,11 @@ test('webhook sem body e sem orderId retorna 200', async (t) => {
   assert.equal(response.status, 200);
   assert.deepEqual(response.body, { received: true });
   assert.deepEqual(provider.getOrderCalls, []);
-  assert.equal(get(db, 'SELECT COUNT(*) AS count FROM sales').count, 0);
+  assert.equal((await get(db, 'SELECT COUNT(*) AS count FROM sales')).count, 0);
 });
 
 test('webhook usa req.body.data.id quando ele contem uma order real', async (t) => {
-  const { db, http, provider } = setup();
+  const { db, http, provider } = await setup();
   t.after(() => db.close());
 
   provider.orders.set('ORD_BODY_1', buildPointOrder({ id: 'ORD_BODY_1', paymentId: 'PAY_BODY_1' }));
@@ -552,11 +611,11 @@ test('webhook usa req.body.data.id quando ele contem uma order real', async (t) 
   assert.equal(response.status, 200);
   assert.equal(response.body.sale.status, 'APPROVED');
   assert.deepEqual(provider.getOrderCalls, ['ORD_BODY_1']);
-  assert.equal(get(db, "SELECT COUNT(*) AS count FROM cash_movements WHERE type = 'SALE'").count, 1);
+  assert.equal((await get(db, "SELECT COUNT(*) AS count FROM cash_movements WHERE type = 'SALE'")).count, 1);
 });
 
 test('webhook com order inexistente na API oficial e ignorado sem venda local', async (t) => {
-  const { db, http } = setup();
+  const { db, http } = await setup();
   t.after(() => db.close());
 
   const response = await http
@@ -567,11 +626,11 @@ test('webhook com order inexistente na API oficial e ignorado sem venda local', 
   assert.equal(response.status, 200);
   assert.equal(response.body.ignored, true);
   assert.equal(response.body.reason, 'order_not_found');
-  assert.equal(get(db, 'SELECT COUNT(*) AS count FROM sales').count, 0);
+  assert.equal((await get(db, 'SELECT COUNT(*) AS count FROM sales')).count, 0);
 });
 
 test('valor divergente nao aprova venda', async (t) => {
-  const { db, http, provider } = setup();
+  const { db, http, provider } = await setup();
   t.after(() => db.close());
 
   const sale = await createSaleAndPayment(http);
@@ -581,11 +640,11 @@ test('valor divergente nao aprova venda', async (t) => {
 
   assert.equal(response.body.sale.status, 'ACTION_REQUIRED');
   assert.equal(response.body.sale.payment.status, 'AMOUNT_MISMATCH');
-  assert.equal(get(db, 'SELECT COUNT(*) AS count FROM cash_movements').count, 0);
+  assert.equal((await get(db, 'SELECT COUNT(*) AS count FROM cash_movements')).count, 0);
 });
 
 test('aprovacao repetida contabiliza caixa apenas uma vez', async (t) => {
-  const { db, http, provider } = setup();
+  const { db, http, provider } = await setup();
   t.after(() => db.close());
 
   const sale = await createSaleAndPayment(http);
@@ -594,11 +653,11 @@ test('aprovacao repetida contabiliza caixa apenas uma vez', async (t) => {
   await http.get(`/api/sales/${sale.id}/status`);
   await http.get(`/api/sales/${sale.id}/status`);
 
-  assert.equal(get(db, "SELECT COUNT(*) AS count FROM cash_movements WHERE type = 'SALE'").count, 1);
+  assert.equal((await get(db, "SELECT COUNT(*) AS count FROM cash_movements WHERE type = 'SALE'")).count, 1);
 });
 
 test('fechamento de caixa usa somente vendas aprovadas', async (t) => {
-  const { db, http, provider } = setup();
+  const { db, http, provider } = await setup();
   t.after(() => db.close());
 
   const approvedSale = await createSaleAndPayment(http);
@@ -620,7 +679,7 @@ test('fechamento de caixa usa somente vendas aprovadas', async (t) => {
 });
 
 test('erro de comunicacao com Mercado Pago nao marca venda como paga', async (t) => {
-  const { db, http, provider } = setup();
+  const { db, http, provider } = await setup();
   t.after(() => db.close());
 
   const sale = await createSale(http);
@@ -629,6 +688,6 @@ test('erro de comunicacao com Mercado Pago nao marca venda como paga', async (t)
   const response = await http.post(`/api/sales/${sale.id}/payments`).send({ payment_method: 'CARD' });
 
   assert.equal(response.status, 502);
-  assert.equal(get(db, 'SELECT status FROM sales WHERE id = ?', [sale.id]).status, 'PENDING');
-  assert.equal(get(db, 'SELECT COUNT(*) AS count FROM payments').count, 0);
+  assert.equal((await get(db, 'SELECT status FROM sales WHERE id = ?', [sale.id])).status, 'PENDING');
+  assert.equal((await get(db, 'SELECT COUNT(*) AS count FROM payments')).count, 0);
 });

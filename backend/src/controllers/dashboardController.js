@@ -1,7 +1,7 @@
 function createDashboardController(dashboardService) {
   return {
-    show(req, res) {
-      res.json({ dashboard: dashboardService.getDashboard() });
+    async show(req, res) {
+      res.json({ dashboard: await dashboardService.getDashboard(req.user?.id) });
     },
   };
 }

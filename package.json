@@ -1,7 +1,7 @@
 {
-  "name": "pdv-mercado-pago-point",
+  "name": "big-lanche",
   "version": "1.0.0",
-  "description": "PDV com integração Mercado Pago Point Smart via Orders API",
+  "description": "Big Lanche com vendas automaticas Mercado Pago Point via Orders API e Webhooks",
   "main": "backend/src/server.js",
   "type": "commonjs",
   "scripts": {
@@ -15,12 +15,17 @@
     "node": ">=22.5"
   },
   "dependencies": {
+    "bcryptjs": "^3.0.3",
+    "cookie-parser": "^1.4.7",
     "cors": "^2.8.5",
     "dotenv": "^16.4.7",
     "express": "^5.2.1",
+    "express-rate-limit": "^8.7.0",
     "helmet": "^8.0.0",
     "mercadopago": "^3.6.0",
-    "morgan": "^1.10.0"
+    "morgan": "^1.10.0",
+    "nodemailer": "^10.0.2",
+    "pg": "^8.23.0"
   },
   "devDependencies": {
     "supertest": "^7.0.0"

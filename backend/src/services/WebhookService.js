@@ -1,12 +1,13 @@
-const { get, run } = require('../database/connection');
+const { get, insert, run } = require('../database/connection');
 const { AppError, MercadoPagoError } = require('../utils/errors');
 const { InvalidWebhookSignatureError } = require('./MercadoPagoProvider');
 
 class WebhookService {
-  constructor(db, paymentService, provider) {
+  constructor(db, paymentService, provider, connectionService = null) {
     this.db = db;
     this.paymentService = paymentService;
     this.provider = provider;
+    this.connectionService = connectionService;
   }
 
   async handleMercadoPago(req) {
@@ -16,6 +17,7 @@ class WebhookService {
     const action = req.body?.action || req.query?.action || 'unknown';
     const resourceType = type || 'unknown';
     const requestId = req.headers['x-request-id'] || null;
+    const mercadoPagoUserId = req.body?.user_id || req.query?.user_id || null;
 
     if (!orderId) {
       console.info('[MercadoPagoWebhook] Notificacao recebida sem orderId.', {
@@ -37,12 +39,13 @@ class WebhookService {
     }
 
     if (!isMercadoPagoOrderId(dataId)) {
-      const event = this.registerEvent({
+      const event = await this.registerEvent({
         dataId,
         action,
         resourceType,
         requestId,
         body: req.body,
+        mercadoPagoUserId,
       });
 
       console.info('[MercadoPagoWebhook] Simulacao recebida sem ID real de order.', {
@@ -52,7 +55,7 @@ class WebhookService {
         embedded_external_reference: embeddedOrder?.external_reference || null,
         request_id: requestId,
       });
-      this.markEvent(event.id, 'IGNORED', `Simulacao sem order real: ${dataId}`);
+      await this.markEvent(event.id, 'IGNORED', `Simulacao sem order real: ${dataId}`);
       return { received: true, ignored: true, simulation: true, reason: 'SIMULATED_ORDER_ID' };
     }
 
@@ -74,12 +77,17 @@ class WebhookService {
       throw error;
     }
 
-    const event = this.registerEvent({
+    const connection = this.connectionService
+      ? await this.connectionService.getConnectionByMercadoPagoUserId(mercadoPagoUserId)
+      : null;
+    const event = await this.registerEvent({
       dataId,
       action,
       resourceType,
       requestId,
       body: req.body,
+      userId: connection?.user_id || null,
+      mercadoPagoUserId,
     });
 
     if (event.duplicate && event.status === 'PROCESSED') {
@@ -92,7 +100,10 @@ class WebhookService {
     }
 
     try {
-      const order = await this.provider.getOrder(dataId);
+      const accessToken = this.connectionService
+        ? await this.connectionService.getAccessTokenForMercadoPagoUser(mercadoPagoUserId)
+        : null;
+      const order = await this.provider.getOrder(dataId, { accessToken });
       console.info('[MercadoPagoWebhook] Order real consultada no Mercado Pago.', {
         action,
         order_id: dataId,
@@ -100,8 +111,12 @@ class WebhookService {
         external_reference: order?.external_reference || null,
         request_id: requestId,
       });
-      const sale = this.paymentService.applyProviderOrder(order);
-      this.markEvent(event.id, 'PROCESSED');
+      const sale = await this.paymentService.applyProviderOrder(order, {
+        userId: connection?.user_id || null,
+        mercadoPagoUserId,
+        action,
+      });
+      await this.markEvent(event.id, 'PROCESSED');
       return { received: true, sale };
     } catch (error) {
       if (shouldIgnoreWebhookError(error, { dataId, embeddedOrder })) {
@@ -113,7 +128,7 @@ class WebhookService {
           simulation: isLikelySimulation(dataId, embeddedOrder, error),
           request_id: requestId,
         });
-        this.markEvent(event.id, 'IGNORED', error.message);
+        await this.markEvent(event.id, 'IGNORED', error.message);
         return {
           received: true,
           ignored: true,
@@ -121,13 +136,13 @@ class WebhookService {
           reason: error.code || 'ORDER_LOOKUP_IGNORED',
         };
       }
-      this.markEvent(event.id, 'FAILED', error.message);
+      await this.markEvent(event.id, 'FAILED', error.message);
       throw error;
     }
   }
 
-  registerEvent({ dataId, action, resourceType, requestId, body }) {
-    const processedSameAction = get(
+  async registerEvent({ dataId, action, resourceType, requestId, body, userId = null, mercadoPagoUserId = null }) {
+    const processedSameAction = await get(
       this.db,
       `SELECT * FROM webhook_events
        WHERE provider = ?
@@ -141,7 +156,7 @@ class WebhookService {
     if (processedSameAction) return { ...processedSameAction, duplicate: true };
 
     const eventKey = [requestId || body?.id || 'no-request-id', dataId, action].join(':');
-    const existing = get(
+    const existing = await get(
       this.db,
       'SELECT * FROM webhook_events WHERE provider = ? AND event_key = ?',
       ['mercadopago', eventKey],
@@ -149,24 +164,29 @@ class WebhookService {
 
     if (existing) return { ...existing, duplicate: true };
 
-    const result = run(
+    const rawBody = {
+      ...(body || {}),
+      ...(mercadoPagoUserId ? { mercado_pago_user_id: mercadoPagoUserId } : {}),
+    };
+
+    const id = await insert(
       this.db,
       `INSERT INTO webhook_events
-       (provider, event_key, request_id, data_id, action, resource_type, raw_body)
-       VALUES ('mercadopago', ?, ?, ?, ?, ?, ?)`,
-      [eventKey, requestId, dataId, action, resourceType, JSON.stringify(body || {})],
+       (user_id, provider, event_key, request_id, data_id, action, resource_type, raw_body)
+       VALUES (?, 'mercadopago', ?, ?, ?, ?, ?, ?)`,
+      [userId, eventKey, requestId, dataId, action, resourceType, JSON.stringify(rawBody)],
     );
 
     return {
-      id: result.lastInsertRowid,
+      id,
       event_key: eventKey,
       status: 'RECEIVED',
       duplicate: false,
     };
   }
 
-  markEvent(id, status, errorMessage = null) {
-    run(
+  async markEvent(id, status, errorMessage = null) {
+    await run(
       this.db,
       `UPDATE webhook_events
        SET status = ?, error_message = ?, processed_at = CURRENT_TIMESTAMP

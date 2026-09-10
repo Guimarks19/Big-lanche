@@ -1,4 +1,4 @@
-const { all, get, run } = require('../database/connection');
+const { all, get, insert, run } = require('../database/connection');
 const { AppError } = require('../utils/errors');
 
 class CashRegisterService {
@@ -6,19 +6,21 @@ class CashRegisterService {
     this.db = db;
   }
 
-  ensureOpen() {
-    const current = this.getCurrent();
+  async ensureOpen(userId = null, db = this.db) {
+    const current = await this.getCurrent(userId, db);
     if (current) return current;
-    return this.open({ opening_balance_cents: 0 });
+    return this.open({ opening_balance_cents: 0, user_id: userId, created_by: userId }, db);
   }
 
-  getCurrent() {
-    const row = get(this.db, "SELECT * FROM cash_registers WHERE status = 'OPEN' ORDER BY id DESC LIMIT 1");
+  async getCurrent(userId = null, db = this.db) {
+    const row = userId
+      ? await get(db, "SELECT * FROM cash_registers WHERE status = 'OPEN' AND user_id = ? ORDER BY id DESC LIMIT 1", [userId])
+      : await get(db, "SELECT * FROM cash_registers WHERE status = 'OPEN' AND user_id IS NULL ORDER BY id DESC LIMIT 1");
     return row ? this.serializeCashRegister(row) : null;
   }
 
-  open({ opening_balance_cents = 0, created_by = null } = {}) {
-    const existing = this.getCurrent();
+  async open({ opening_balance_cents = 0, created_by = null, user_id = null } = {}, db = this.db) {
+    const existing = await this.getCurrent(user_id, db);
     if (existing) return existing;
 
     const amount = Number(opening_balance_cents);
@@ -26,39 +28,41 @@ class CashRegisterService {
       throw new AppError('Saldo inicial invalido.', 400, 'INVALID_OPENING_BALANCE');
     }
 
-    const result = run(
-      this.db,
-      'INSERT INTO cash_registers (opening_balance_cents, created_by) VALUES (?, ?)',
-      [amount, created_by],
+    const id = await insert(
+      db,
+      'INSERT INTO cash_registers (opening_balance_cents, created_by, user_id) VALUES (?, ?, ?)',
+      [amount, created_by, user_id],
     );
-    return this.getById(result.lastInsertRowid);
+    return this.getById(id, user_id, db);
   }
 
-  close(id) {
-    const cashRegister = this.getById(id);
+  async close(id, userId = null) {
+    const cashRegister = await this.getById(id, userId);
     if (cashRegister.status === 'CLOSED') return cashRegister;
 
-    const summary = this.getSummary(id);
+    const summary = await this.getSummary(id, userId);
     const closingBalance = cashRegister.opening_balance_cents + summary.total_received_cents;
 
-    run(
+    await run(
       this.db,
       "UPDATE cash_registers SET status = 'CLOSED', closed_at = CURRENT_TIMESTAMP, closing_balance_cents = ? WHERE id = ?",
       [closingBalance, Number(id)],
     );
 
-    return this.getById(id);
+    return this.getById(id, userId);
   }
 
-  getById(id) {
-    const row = get(this.db, 'SELECT * FROM cash_registers WHERE id = ?', [Number(id)]);
+  async getById(id, userId = null, db = this.db) {
+    const row = userId
+      ? await get(db, 'SELECT * FROM cash_registers WHERE id = ? AND user_id = ?', [Number(id), userId])
+      : await get(db, 'SELECT * FROM cash_registers WHERE id = ?', [Number(id)]);
     if (!row) throw new AppError('Caixa nao encontrado.', 404, 'CASH_REGISTER_NOT_FOUND');
     return this.serializeCashRegister(row);
   }
 
-  getSummary(id) {
-    const cashRegister = this.getById(id);
-    const movementRows = all(
+  async getSummary(id, userId = null) {
+    const cashRegister = await this.getById(id, userId);
+    const movementRows = await all(
       this.db,
       `SELECT type, payment_method, amount_cents
        FROM cash_movements
@@ -66,7 +70,7 @@ class CashRegisterService {
       [Number(id)],
     );
 
-    const sales = get(
+    const sales = await get(
       this.db,
       `SELECT
          COUNT(*) AS total_sales,
@@ -117,6 +121,7 @@ class CashRegisterService {
   serializeCashRegister(row) {
     return {
       id: row.id,
+      user_id: row.user_id,
       opened_at: row.opened_at,
       closed_at: row.closed_at,
       opening_balance_cents: row.opening_balance_cents,

@@ -1,21 +1,25 @@
 function createCashRegisterController(cashRegisterService) {
   return {
-    current(req, res) {
-      res.json({ cash_register: cashRegisterService.ensureOpen() });
+    async current(req, res) {
+      res.json({ cash_register: await cashRegisterService.ensureOpen(req.user?.id) });
     },
 
-    open(req, res) {
-      const cashRegister = cashRegisterService.open(req.body || {});
+    async open(req, res) {
+      const cashRegister = await cashRegisterService.open({
+        ...(req.body || {}),
+        user_id: req.user?.id,
+        created_by: req.user?.id,
+      });
       res.status(201).json({ cash_register: cashRegister });
     },
 
-    close(req, res) {
-      const cashRegister = cashRegisterService.close(req.params.id);
+    async close(req, res) {
+      const cashRegister = await cashRegisterService.close(req.params.id, req.user?.id);
       res.json({ cash_register: cashRegister });
     },
 
-    summary(req, res) {
-      res.json({ summary: cashRegisterService.getSummary(req.params.id) });
+    async summary(req, res) {
+      res.json({ summary: await cashRegisterService.getSummary(req.params.id, req.user?.id) });
     },
   };
 }

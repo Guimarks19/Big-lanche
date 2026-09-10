@@ -1,419 +1,406 @@
-const state = {
-  config: null,
-  credentials: null,
-  currentSale: null,
-  pollTimer: null,
-  autoResetTimer: null,
-  lastSale: null,
-};
-
-const els = {
-  amountInput: document.getElementById('saleAmountInput'),
-  lastSale: document.getElementById('lastSale'),
-  paymentModal: document.getElementById('paymentModal'),
-  paymentStatusIcon: document.getElementById('paymentStatusIcon'),
-  paymentModeLabel: document.getElementById('paymentModeLabel'),
-  paymentTitle: document.getElementById('paymentTitle'),
-  paymentAmount: document.getElementById('paymentAmount'),
-  paymentMessage: document.getElementById('paymentMessage'),
-  transactionLine: document.getElementById('transactionLine'),
-  terminalState: document.getElementById('terminalState'),
-  toast: document.getElementById('toast'),
-  salesList: document.getElementById('salesList'),
-  terminalIdInput: document.getElementById('terminalIdInput'),
-  currentTerminalCard: document.getElementById('currentTerminalCard'),
-  terminalsList: document.getElementById('terminalsList'),
-  credentialStatus: document.getElementById('credentialStatus'),
-  publicKeyInput: document.getElementById('publicKeyInput'),
-  accessTokenInput: document.getElementById('accessTokenInput'),
-  clientIdInput: document.getElementById('clientIdInput'),
-  clientSecretInput: document.getElementById('clientSecretInput'),
-  webhookSecretInput: document.getElementById('webhookSecretInput'),
-};
-
 const currency = new Intl.NumberFormat('pt-BR', {
   style: 'currency',
   currency: 'BRL',
 });
 
-document.addEventListener('DOMContentLoaded', async () => {
+const routes = {
+  login: '/login',
+  register: '/cadastro',
+  verify: '/verificar-email',
+  forgot: '/esqueci-senha',
+  reset: '/redefinir-senha',
+  dashboard: '/',
+  sales: '/vendas',
+  reports: '/relatorios',
+  mercadopago: '/mercado-pago',
+  settings: '/configuracoes',
+  account: '/minha-conta',
+};
+
+const authViewByPath = {
+  '/login': 'login',
+  '/cadastro': 'register',
+  '/verificar-email': 'verify',
+  '/esqueci-senha': 'forgot',
+  '/redefinir-senha': 'reset',
+};
+
+const appViewByPath = {
+  '/': 'dashboard',
+  '/vendas': 'sales',
+  '/relatorios': 'reports',
+  '/mercado-pago': 'mercadopago',
+  '/configuracoes': 'settings',
+  '/minha-conta': 'account',
+};
+
+const state = {
+  csrfToken: null,
+  dashboard: null,
+  mercadoPago: null,
+  pendingVerificationEmail: '',
+  pollTimer: null,
+  saleIds: new Set(),
+  sales: [],
+  salesLoaded: false,
+  user: null,
+};
+
+const els = {};
+
+document.addEventListener('DOMContentLoaded', () => {
+  collectElements();
   bindEvents();
-  await Promise.all([loadConfig(), loadCredentialStatus(), loadDashboard(), loadSales(), loadCashSummary()]);
-  await loadLocalTerminals();
-  renderPaymentButtons();
-  els.amountInput.focus();
+  boot().catch((error) => showFatal(error.message));
 });
 
+function collectElements() {
+  [
+    'accountAvatar',
+    'accountEmail',
+    'accountName',
+    'accountVerified',
+    'appShell',
+    'authShell',
+    'cashMovements',
+    'cashSummary',
+    'closeCashButton',
+    'connectMercadoPagoButton',
+    'currentTerminalCard',
+    'dashboardConnectionSummary',
+    'disconnectMercadoPagoButton',
+    'forgotEmailInput',
+    'forgotPasswordForm',
+    'latestSalesList',
+    'loginEmailInput',
+    'loginForm',
+    'loginPasswordInput',
+    'logoutButton',
+    'mercadoPagoStatus',
+    'metricsGrid',
+    'passwordRequirements',
+    'passwordStrengthBar',
+    'registerEmailInput',
+    'registerForm',
+    'registerNameInput',
+    'registerPasswordConfirmInput',
+    'registerPasswordInput',
+    'resendVerificationButton',
+    'resetPasswordConfirmInput',
+    'resetPasswordForm',
+    'resetPasswordInput',
+    'salesList',
+    'salesMinAmountInput',
+    'salesPaymentFilter',
+    'salesPeriodFilter',
+    'salesSearchInput',
+    'salesStatusFilter',
+    'sidebar',
+    'sidebarBackdrop',
+    'sidebarToggle',
+    'syncTerminalsButton',
+    'terminalState',
+    'terminalsList',
+    'testConnectionButton',
+    'toast',
+    'userFirstName',
+    'verificationEmailInput',
+    'verificationMessage',
+    'welcomeSubtitle',
+  ].forEach((id) => {
+    els[id] = document.getElementById(id);
+  });
+}
+
 function bindEvents() {
-  document.querySelectorAll('.nav-button').forEach((button) => {
-    button.addEventListener('click', () => switchView(button.dataset.view));
+  document.querySelectorAll('[data-auth-view]').forEach((button) => {
+    button.addEventListener('click', () => showAuthView(button.dataset.authView, { push: true }));
   });
 
-  els.amountInput.addEventListener('input', renderPaymentButtons);
-  els.amountInput.addEventListener('keydown', (event) => {
-    if (event.key === 'Enter' && getAmountCents() > 0) {
-      event.preventDefault();
-      startSalePayment('CARD');
+  document.querySelectorAll('[data-view]').forEach((button) => {
+    button.addEventListener('click', () => showAppView(button.dataset.view, { push: true }));
+  });
+
+  document.querySelectorAll('[data-view-target]').forEach((button) => {
+    button.addEventListener('click', () => showAppView(button.dataset.viewTarget, { push: true }));
+  });
+
+  document.querySelectorAll('[data-toggle-password]').forEach((button) => {
+    button.addEventListener('click', () => togglePassword(button));
+  });
+
+  els.loginForm?.addEventListener('submit', handleLogin);
+  els.registerForm?.addEventListener('submit', handleRegister);
+  els.forgotPasswordForm?.addEventListener('submit', handleForgotPassword);
+  els.resetPasswordForm?.addEventListener('submit', handleResetPassword);
+  els.registerPasswordInput?.addEventListener('input', renderPasswordStrength);
+  els.resendVerificationButton?.addEventListener('click', handleResendVerification);
+
+  els.refreshSalesButton?.addEventListener('click', () => refreshPrivateData({ showSuccess: true }));
+  els.closeCashButton?.addEventListener('click', closeCashRegister);
+  els.connectMercadoPagoButton?.addEventListener('click', () => {
+    window.location.href = '/api/mercadopago/connect';
+  });
+  els.testConnectionButton?.addEventListener('click', testMercadoPagoConnection);
+  els.disconnectMercadoPagoButton?.addEventListener('click', disconnectMercadoPago);
+  els.syncTerminalsButton?.addEventListener('click', syncTerminals);
+  els.logoutButton?.addEventListener('click', () => logout({ pushLogin: true }));
+
+  [
+    els.salesSearchInput,
+    els.salesPeriodFilter,
+    els.salesStatusFilter,
+    els.salesPaymentFilter,
+    els.salesMinAmountInput,
+  ].forEach((input) => {
+    input?.addEventListener('input', renderSalesList);
+    input?.addEventListener('change', renderSalesList);
+  });
+
+  els.sidebarToggle?.addEventListener('click', openSidebar);
+  els.sidebarBackdrop?.addEventListener('click', closeSidebar);
+
+  window.addEventListener('popstate', () => {
+    if (state.user) {
+      showAppView(resolveAppViewFromPath(), { push: false });
+      return;
     }
+    showAuthView(resolveAuthViewFromPath(), { push: false });
   });
-
-  document.querySelectorAll('[data-quick-amount]').forEach((button) => {
-    button.addEventListener('click', () => {
-      const cents = getAmountCents() + Number(button.dataset.quickAmount);
-      els.amountInput.value = centsToInputValue(cents);
-      renderPaymentButtons();
-    });
-  });
-
-  document.getElementById('refreshSalesButton').addEventListener('click', refreshSalesView);
-  document.getElementById('cardPaymentButton').addEventListener('click', () => startSalePayment('CARD'));
-  document.getElementById('pixPaymentButton').addEventListener('click', () => startSalePayment('PIX'));
-  document.getElementById('cancelPaymentButton').addEventListener('click', cancelPayment);
-  document.getElementById('newSaleButton').addEventListener('click', resetSale);
-  document.getElementById('closeCashButton').addEventListener('click', closeCashRegister);
-  document.getElementById('saveTerminalButton').addEventListener('click', saveTerminal);
-  document.getElementById('setupPdvButton').addEventListener('click', setupActiveTerminalPdv);
-  document.getElementById('syncTerminalsButton').addEventListener('click', syncTerminals);
-  document.getElementById('reloadCredentialsButton').addEventListener('click', loadCredentialStatus);
-  document.getElementById('saveCredentialsButton').addEventListener('click', saveCredentials);
 }
 
-async function api(path, options = {}) {
-  const response = await fetch(path, {
-    headers: { 'Content-Type': 'application/json', ...(options.headers || {}) },
-    ...options,
-    body: options.body ? JSON.stringify(options.body) : undefined,
-  });
-
-  if (response.status === 204) return null;
-
-  const data = await response.json().catch(() => ({}));
-  if (!response.ok) {
-    throw new Error(data?.error?.message || 'Falha na comunicacao com o servidor.');
-  }
-  return data;
-}
-
-async function loadConfig() {
-  const data = await api('/api/config');
-  state.config = data.mercadopago;
-
-  const dot = els.terminalState.querySelector('.status-dot');
-  dot.classList.toggle('ok', state.config.terminal_configured);
-  els.terminalState.querySelector('span:last-child').textContent = state.config.terminal_configured
-    ? 'Maquininha configurada'
-    : 'Maquininha nao configurada';
-
-  els.terminalIdInput.value = state.config.terminal_id || '';
-  renderCurrentTerminal();
-  renderPaymentButtons();
-}
-
-async function loadCredentialStatus() {
-  const data = await api('/api/mercadopago/credentials');
-  state.credentials = data.credentials;
-  renderCredentialStatus();
-}
-
-function renderCredentialStatus() {
-  if (!state.credentials) {
-    els.credentialStatus.innerHTML = '<div class="empty-state compact-empty">Credenciais nao carregadas.</div>';
+async function boot() {
+  if (window.location.pathname === '/logout') {
+    await logout({ pushLogin: true, silent: true });
     return;
   }
 
-  const entries = [
-    ['Public Key', state.credentials.public_key],
-    ['Access Token', state.credentials.access_token],
-    ['Client ID', state.credentials.client_id],
-    ['Client Secret', state.credentials.client_secret],
-    ['Webhook Secret', state.credentials.webhook_secret],
-    ['Terminal ID', state.credentials.terminal_id],
-  ];
+  const session = await api('/api/auth/me', { ignoreAuthRedirect: true });
+  if (session.authenticated) {
+    state.user = session.user;
+    state.csrfToken = session.csrf_token || readCookie('big_lanche_csrf');
+    const appView = resolveAppViewFromPath();
+    showAppView(appView, { push: false });
+    if (authViewByPath[window.location.pathname]) {
+      history.replaceState({}, '', routes[appView] || routes.dashboard);
+    }
+    renderUser();
+    await refreshPrivateData({ initial: true });
+    startPolling();
 
-  els.credentialStatus.innerHTML = entries
-    .map(([label, credential]) => {
-      const configured = Boolean(credential?.configured);
-      const value = configured ? credential.masked : 'Pendente';
-      return `
-        <div class="credential-chip ${configured ? 'ok' : ''}">
-          <span>${label}</span>
-          <strong>${escapeHtml(value)}</strong>
-        </div>
-      `;
-    })
-    .join('');
-}
-
-async function saveCredentials() {
-  const payload = collectCredentialPayload();
-  const providerTerminalId = els.terminalIdInput.value.trim();
-  if (providerTerminalId) payload.terminal_id = providerTerminalId;
-
-  if (Object.keys(payload).length === 0) {
-    showToast('Informe ao menos uma credencial.');
+    if (new URLSearchParams(window.location.search).get('connected') === '1') {
+      showToast('Mercado Pago conectado.', 'success');
+      history.replaceState({}, '', routes.mercadopago);
+    }
     return;
   }
 
-  try {
-    const { credentials, terminal } = await api('/api/mercadopago/credentials', {
-      method: 'PUT',
-      body: payload,
-    });
+  const authView = resolveAuthViewFromPath();
+  showAuthView(authView, { push: false });
 
-    state.credentials = credentials;
-    clearCredentialInputs();
-    renderCredentialStatus();
-
-    if (terminal) {
-      state.config = {
-        ...state.config,
-        terminal_configured: terminal.configured,
-        terminal_id: terminal.provider_terminal_id,
-      };
-      els.terminalIdInput.value = terminal.provider_terminal_id || '';
-      renderCurrentTerminal();
-      updateSidebarTerminalState();
-    }
-
-    renderPaymentButtons();
-    await loadLocalTerminals();
-    showToast('Credenciais salvas no backend.');
-  } catch (error) {
-    showToast(error.message);
+  if (authView === 'verify') {
+    await verifyEmailFromUrl();
   }
 }
 
-function collectCredentialPayload() {
-  return {
-    ...(els.publicKeyInput.value.trim() ? { public_key: els.publicKeyInput.value.trim() } : {}),
-    ...(els.accessTokenInput.value.trim() ? { access_token: els.accessTokenInput.value.trim() } : {}),
-    ...(els.clientIdInput.value.trim() ? { client_id: els.clientIdInput.value.trim() } : {}),
-    ...(els.clientSecretInput.value.trim() ? { client_secret: els.clientSecretInput.value.trim() } : {}),
-    ...(els.webhookSecretInput.value.trim() ? { webhook_secret: els.webhookSecretInput.value.trim() } : {}),
-  };
-}
+async function handleLogin(event) {
+  event.preventDefault();
+  const submitButton = event.submitter;
 
-function clearCredentialInputs() {
-  els.publicKeyInput.value = '';
-  els.accessTokenInput.value = '';
-  els.clientIdInput.value = '';
-  els.clientSecretInput.value = '';
-  els.webhookSecretInput.value = '';
-}
-
-function renderCurrentTerminal() {
-  const terminalId = state.config?.terminal_id;
-  els.currentTerminalCard.innerHTML = terminalId
-    ? `
-      <span>Mercado Pago Point</span>
-      <strong>${escapeHtml(terminalId)}</strong>
-      <span class="muted">Status local: configurada</span>
-    `
-    : `
-      <span>Mercado Pago Point</span>
-      <strong>Nenhuma maquininha cadastrada</strong>
-      <span class="muted">Salve o ID do terminal para enviar cobrancas.</span>
-    `;
-}
-
-function renderPaymentButtons() {
-  const amountCents = getAmountCents();
-  const hasTerminal = Boolean(state.config?.terminal_configured);
-  document.getElementById('cardPaymentButton').disabled = amountCents <= 0 || !hasTerminal;
-  document.getElementById('pixPaymentButton').disabled =
-    amountCents <= 0 || !hasTerminal || !state.config?.pix_qr_enabled;
-}
-
-async function startSalePayment(paymentMethod) {
-  const amountCents = getAmountCents();
-  if (amountCents <= 0) return;
-
-  showPaymentModal({
-    status: 'pending',
-    title: 'Pagamento em andamento',
-    message: 'Enviando cobranca para a Point Smart...',
-    paymentMethod,
-  });
-
-  try {
-    const checkoutResponse = await api('/api/checkout/point', {
-      method: 'POST',
-      body: { amount_cents: amountCents, payment_method: paymentMethod },
-    });
-
-    state.currentSale = checkoutResponse.sale;
-    showPaymentModal({
-      status: 'pending',
-      title: 'Pagamento em andamento',
-      message: 'Aguardando pagamento na Point Smart...',
-      paymentMethod,
-      amount: state.currentSale.total,
-    });
-    startPollingStatus();
-  } catch (error) {
-    showPaymentModal({
-      status: 'failed',
-      title: 'Nao foi possivel iniciar',
-      message: error.message,
-      paymentMethod,
-    });
-  }
-}
-
-function startPollingStatus() {
-  clearInterval(state.pollTimer);
-  state.pollTimer = setInterval(async () => {
-    if (!state.currentSale) return;
+  await withButtonLoading(submitButton, 'Entrando...', async () => {
     try {
-      const response = await api(`/api/sales/${state.currentSale.id}/status`);
-      state.currentSale = response.sale;
-      handleSaleStatus(state.currentSale);
+      const response = await api('/api/auth/login', {
+        method: 'POST',
+        body: {
+          email: els.loginEmailInput.value,
+          password: els.loginPasswordInput.value,
+        },
+        ignoreAuthRedirect: true,
+      });
+
+      state.user = response.user;
+      state.csrfToken = response.csrf_token || readCookie('big_lanche_csrf');
+      renderUser();
+      showAppView('dashboard', { push: true });
+      await refreshPrivateData({ initial: true });
+      startPolling();
+      showToast('Login realizado com seguranca.', 'success');
     } catch (error) {
-      showToast(error.message);
+      if (error.code === 'EMAIL_NOT_VERIFIED') {
+        state.pendingVerificationEmail = normalizeEmail(els.loginEmailInput.value);
+        els.verificationEmailInput.value = state.pendingVerificationEmail;
+        els.verificationMessage.textContent = 'Confirme seu e-mail antes de entrar. Voce pode reenviar o link abaixo.';
+        showAuthView('verify', { push: true });
+        return;
+      }
+      showToast(error.message, 'danger');
     }
-  }, 2500);
-}
-
-function handleSaleStatus(sale) {
-  if (sale.status === 'PENDING') return;
-
-  clearInterval(state.pollTimer);
-  state.pollTimer = null;
-  state.lastSale = sale;
-
-  if (sale.status === 'APPROVED') {
-    showPaymentModal({
-      status: 'approved',
-      title: 'Pagamento aprovado',
-      message: 'Venda confirmada automaticamente pelo Mercado Pago.',
-      paymentMethod: sale.payment_method,
-      amount: sale.total,
-      transactionId: sale.payment?.transaction_id || sale.provider_payment_id,
-    });
-    els.amountInput.value = '';
-    renderPaymentButtons();
-    refreshSalesView();
-    renderLastSale();
-    clearTimeout(state.autoResetTimer);
-    state.autoResetTimer = setTimeout(resetSale, 4500);
-    return;
-  }
-
-  const messages = {
-    REJECTED: 'Pagamento recusado. A venda nao entrou no caixa.',
-    CANCELLED: 'Pagamento cancelado. A venda nao entrou no caixa.',
-    EXPIRED: 'A cobranca expirou. Informe o valor novamente para tentar de novo.',
-    REFUNDED: 'Pagamento estornado.',
-    ACTION_REQUIRED: 'Verifique o status final no terminal e no painel Mercado Pago.',
-  };
-
-  showPaymentModal({
-    status: 'failed',
-    title: statusLabel(sale.status),
-    message: messages[sale.status] || 'Pagamento nao aprovado.',
-    paymentMethod: sale.payment_method,
-    amount: sale.total,
   });
-  renderLastSale();
-  refreshSalesView();
 }
 
-async function cancelPayment() {
-  if (!state.currentSale || state.currentSale.status !== 'PENDING') {
-    hidePaymentModal();
-    return;
-  }
+async function handleRegister(event) {
+  event.preventDefault();
+  const submitButton = event.submitter;
+
+  await withButtonLoading(submitButton, 'Criando conta...', async () => {
+    try {
+      const response = await api('/api/auth/register', {
+        method: 'POST',
+        body: {
+          name: els.registerNameInput.value,
+          email: els.registerEmailInput.value,
+          password: els.registerPasswordInput.value,
+          password_confirmation: els.registerPasswordConfirmInput.value,
+        },
+        ignoreAuthRedirect: true,
+      });
+
+      state.pendingVerificationEmail = normalizeEmail(els.registerEmailInput.value);
+      els.verificationEmailInput.value = state.pendingVerificationEmail;
+      els.verificationMessage.textContent = response.masked_email
+        ? `Enviamos um link de confirmacao para ${response.masked_email}.`
+        : 'Enviamos um link de confirmacao para o endereco informado.';
+      showAuthView('verify', { push: true });
+      showToast('Cadastro criado. Verifique seu e-mail.', 'success');
+      els.registerForm.reset();
+      renderPasswordStrength();
+    } catch (error) {
+      showToast(error.message, 'danger');
+    }
+  });
+}
+
+async function handleForgotPassword(event) {
+  event.preventDefault();
+  const submitButton = event.submitter;
+
+  await withButtonLoading(submitButton, 'Enviando...', async () => {
+    try {
+      await api('/api/auth/forgot-password', {
+        method: 'POST',
+        body: { email: els.forgotEmailInput.value },
+        ignoreAuthRedirect: true,
+      });
+      showToast('Se o e-mail existir, enviaremos as instrucoes.', 'success');
+      els.forgotPasswordForm.reset();
+    } catch (error) {
+      showToast(error.message, 'danger');
+    }
+  });
+}
+
+async function handleResetPassword(event) {
+  event.preventDefault();
+  const submitButton = event.submitter;
+  const token = new URLSearchParams(window.location.search).get('token');
+
+  await withButtonLoading(submitButton, 'Redefinindo...', async () => {
+    try {
+      await api('/api/auth/reset-password', {
+        method: 'POST',
+        body: {
+          token,
+          password: els.resetPasswordInput.value,
+          password_confirmation: els.resetPasswordConfirmInput.value,
+        },
+        ignoreAuthRedirect: true,
+      });
+      els.resetPasswordForm.reset();
+      showAuthView('login', { push: true });
+      showToast('Senha redefinida. Entre novamente.', 'success');
+    } catch (error) {
+      showToast(error.message, 'danger');
+    }
+  });
+}
+
+async function verifyEmailFromUrl() {
+  const token = new URLSearchParams(window.location.search).get('token');
+  if (!token) return;
 
   try {
-    const response = await api(`/api/sales/${state.currentSale.id}/cancel`, { method: 'POST' });
-    state.currentSale = response.sale;
-    handleSaleStatus(state.currentSale);
+    await api(`/api/auth/verify-email?token=${encodeURIComponent(token)}`, { ignoreAuthRedirect: true });
+    els.verificationMessage.textContent = 'E-mail confirmado. Agora voce ja pode entrar.';
+    showToast('E-mail verificado com sucesso.', 'success');
+    history.replaceState({}, '', routes.login);
+    setTimeout(() => showAuthView('login', { push: true }), 1000);
   } catch (error) {
-    showToast(error.message);
+    els.verificationMessage.textContent = error.message;
+    showToast(error.message, 'danger');
   }
 }
 
-function resetSale() {
-  state.currentSale = null;
-  clearInterval(state.pollTimer);
-  clearTimeout(state.autoResetTimer);
-  state.pollTimer = null;
-  state.autoResetTimer = null;
-  hidePaymentModal();
-  switchView('pos');
-  els.amountInput.focus();
-}
-
-function renderLastSale() {
-  if (!state.lastSale) {
-    els.lastSale.innerHTML = '<span>Nenhuma transacao nesta sessao.</span>';
+async function handleResendVerification() {
+  const email = normalizeEmail(els.verificationEmailInput.value || state.pendingVerificationEmail);
+  if (!email) {
+    showToast('Informe o e-mail para reenviar a confirmacao.', 'warning');
     return;
   }
 
-  const transaction = state.lastSale.payment?.transaction_id || state.lastSale.provider_payment_id || '-';
-  els.lastSale.innerHTML = `
-    <span>${statusLabel(state.lastSale.status)}</span>
-    <strong>${currency.format(state.lastSale.total)}</strong>
-    <span>Transacao: ${escapeHtml(transaction)}</span>
-  `;
+  await withButtonLoading(els.resendVerificationButton, 'Reenviando...', async () => {
+    try {
+      await api('/api/auth/resend-verification', {
+        method: 'POST',
+        body: { email },
+        ignoreAuthRedirect: true,
+      });
+      showToast('Se houver uma conta pendente, enviaremos outro link.', 'success');
+    } catch (error) {
+      showToast(error.message, 'danger');
+    }
+  });
 }
 
-async function refreshSalesView() {
-  await Promise.all([loadDashboard(), loadSales(), loadCashSummary()]);
+async function logout({ pushLogin = true, silent = false } = {}) {
+  try {
+    if (state.user) {
+      await api('/api/auth/logout', { method: 'POST', ignoreAuthRedirect: true });
+    }
+  } catch (error) {
+    if (!silent) showToast(error.message, 'warning');
+  }
+
+  state.user = null;
+  state.csrfToken = null;
+  state.sales = [];
+  state.saleIds = new Set();
+  state.salesLoaded = false;
+  stopPolling();
+  showAuthView('login', { push: pushLogin });
+}
+
+async function refreshPrivateData({ initial = false, showSuccess = false } = {}) {
+  if (!state.user) return;
+  if (initial) renderLoadingState();
+
+  try {
+    await Promise.all([loadDashboard(), loadSales(), loadMercadoPagoStatus(), loadCashSummary()]);
+    if (showSuccess) showToast('Painel atualizado.', 'success');
+  } catch (error) {
+    showToast(error.message, 'danger');
+  }
 }
 
 async function loadDashboard() {
   const { dashboard } = await api('/api/dashboard');
-  document.getElementById('metricsGrid').innerHTML = [
-    ['Faturamento do dia', currency.format(dashboard.revenue_cents / 100)],
-    ['Quantidade de vendas', dashboard.sales_count],
-    ['Vendas aprovadas', dashboard.approved_sales],
-    ['Vendas recusadas', dashboard.rejected_sales],
-    ['Pagamentos em cartao', currency.format(dashboard.card_cents / 100)],
-    ['Pagamentos em Pix', currency.format(dashboard.pix_cents / 100)],
-    ['Ticket medio', currency.format(dashboard.average_ticket_cents / 100)],
-    ['Canceladas/estornadas', `${dashboard.cancelled_sales}/${dashboard.refunded_sales}`],
-  ]
-    .map(([label, value]) => `<div class="metric"><span>${label}</span><strong>${value}</strong></div>`)
-    .join('');
-
-  document.getElementById('cashMovements').innerHTML = dashboard.cash_movements.length
-    ? dashboard.cash_movements
-        .map(
-          (movement) => `
-            <div class="compact-row">
-              <span>${movement.type} · ${movement.payment_method || '-'}</span>
-              <strong>${currency.format(movement.amount_cents / 100)}</strong>
-            </div>
-          `,
-        )
-        .join('')
-    : '<div class="empty-state">Sem movimentacoes hoje.</div>';
+  state.dashboard = dashboard;
+  renderDashboard(dashboard);
 }
 
 async function loadSales() {
-  const { sales } = await api('/api/sales?limit=40');
-  els.salesList.innerHTML = sales.length
-    ? sales
-        .map((sale) => {
-          const payment = sale.payment || {};
-          const transaction = payment.transaction_id || sale.provider_payment_id || '-';
-          const installments = payment.installments ? ` · ${payment.installments}x` : '';
-          const terminal = payment.provider_terminal_id ? ` · Terminal ${payment.provider_terminal_id}` : '';
+  const { sales } = await api('/api/sales?limit=200');
+  detectNewSales(sales || []);
+  state.sales = sales || [];
+  renderLatestSales();
+  renderSalesList();
+}
 
-          return `
-            <div class="compact-row">
-              <div class="sale-details">
-                <strong>${currency.format(sale.total)}</strong>
-                <div class="muted">${formatDateTime(sale.created_at)} · ${sale.payment_method}${installments}</div>
-                <div class="muted">Transacao ${escapeHtml(transaction)}${escapeHtml(terminal)}</div>
-              </div>
-              <span class="sale-status ${sale.status}">${statusLabel(sale.status)}</span>
-            </div>
-          `;
-        })
-        .join('')
-    : '<div class="empty-state">Nenhuma venda registrada.</div>';
+async function loadMercadoPagoStatus() {
+  const { mercado_pago: mercadoPago } = await api('/api/mercadopago/status');
+  state.mercadoPago = mercadoPago;
+  renderMercadoPagoStatus();
+  renderConnectionSummary();
+  updateSidebarTerminalState();
 }
 
 async function loadCashSummary() {
@@ -422,203 +409,678 @@ async function loadCashSummary() {
   renderCashSummary(summary.summary);
 }
 
-function renderCashSummary(summary) {
-  const entries = [
-    ['Faturamento bruto', summary.gross_revenue_cents],
-    ['Cartao', summary.card_cents],
-    ['Pix', summary.pix_cents],
-    ['Dinheiro', summary.cash_cents],
-    ['Total recebido', summary.total_received_cents],
-    ['Total cancelado', summary.total_cancelled_cents],
-    ['Total estornado', summary.total_refunded_cents],
-    ['Vendas aprovadas', summary.sales.approved, false],
-    ['Vendas recusadas', summary.sales.rejected, false],
+function renderDashboard(dashboard) {
+  const cards = [
+    ['Vendas hoje', dashboard.sales_count || 0, 'Total recebido pelo webhook hoje'],
+    ['Faturamento', currency.format((dashboard.revenue_cents || 0) / 100), 'Apenas vendas aprovadas'],
+    ['Ticket medio', currency.format((dashboard.average_ticket_cents || 0) / 100), 'Baseado em vendas aprovadas'],
+    ['Vendas aprovadas', dashboard.approved_sales || 0, 'Confirmadas pelo Mercado Pago'],
+    ['Vendas recusadas', dashboard.rejected_sales || 0, 'Nao entram no caixa'],
+    ['Canceladas/estornadas', `${dashboard.cancelled_sales || 0}/${dashboard.refunded_sales || 0}`, 'Controle operacional'],
   ];
 
-  document.getElementById('cashSummary').innerHTML = entries
-    .map(([label, value, money = true]) => {
-      const display = money ? currency.format(value / 100) : value;
-      return `<div class="cash-box"><span>${label}</span><strong>${display}</strong></div>`;
-    })
+  els.metricsGrid.innerHTML = cards
+    .map(
+      ([label, value, helper]) => `
+        <div class="metric">
+          <span>${escapeHtml(label)}</span>
+          <strong>${escapeHtml(value)}</strong>
+          <small>${escapeHtml(helper)}</small>
+        </div>
+      `,
+    )
+    .join('');
+
+  renderCashMovements(dashboard.cash_movements || []);
+}
+
+function renderLatestSales() {
+  const latest = state.sales.slice(0, 5);
+  els.latestSalesList.innerHTML = latest.length
+    ? latest.map(renderSaleRow).join('')
+    : `
+      <div class="empty-state">
+        <strong>Nenhuma venda registrada ainda.</strong>
+        <span>Quando uma nova venda cair no Mercado Pago, ela aparecerá automaticamente aqui.</span>
+      </div>
+    `;
+}
+
+function renderSalesList() {
+  const filtered = getFilteredSales();
+  els.salesList.innerHTML = filtered.length
+    ? filtered.map(renderSaleRow).join('')
+    : `
+      <div class="empty-state">
+        <strong>Nenhuma venda encontrada.</strong>
+        <span>Ajuste os filtros ou aguarde uma nova notificacao do Mercado Pago.</span>
+      </div>
+    `;
+}
+
+function renderSaleRow(sale) {
+  const payment = sale.payment || {};
+  const transaction = payment.transaction_id || sale.provider_payment_id || sale.provider_order_id || '-';
+  const terminal = payment.provider_terminal_id ? `Terminal ${payment.provider_terminal_id}` : 'Point Smart';
+  const installments = payment.installments && Number(payment.installments) > 1 ? ` • ${payment.installments}x` : '';
+
+  return `
+    <article class="sale-row">
+      <div class="sale-main">
+        <span class="sale-number">Venda #${String(sale.id).padStart(4, '0')}</span>
+        <strong>${currency.format((sale.total_cents || 0) / 100)}</strong>
+      </div>
+      <div class="sale-meta">
+        <span>${escapeHtml(paymentLabel(sale))}${escapeHtml(installments)}</span>
+        <span>${escapeHtml(formatTime(sale.created_at))}</span>
+        <span>${escapeHtml(terminal)}</span>
+      </div>
+      <div class="sale-footer">
+        <span class="muted">Transacao ${escapeHtml(transaction)}</span>
+        <span class="pill ${statusClass(sale.status)}">${escapeHtml(statusLabel(sale.status))}</span>
+      </div>
+    </article>
+  `;
+}
+
+function getFilteredSales() {
+  const search = normalizeSearch(els.salesSearchInput?.value);
+  const status = els.salesStatusFilter?.value || '';
+  const payment = els.salesPaymentFilter?.value || '';
+  const period = els.salesPeriodFilter?.value || 'today';
+  const minAmount = Number.parseFloat(els.salesMinAmountInput?.value || '0') || 0;
+
+  return state.sales.filter((sale) => {
+    if (status && sale.status !== status) return false;
+    if (payment && sale.payment_method !== payment) return false;
+    if (minAmount > 0 && (sale.total_cents || 0) < Math.round(minAmount * 100)) return false;
+    if (!matchesPeriod(sale.created_at, period)) return false;
+    if (!search) return true;
+
+    const paymentData = sale.payment || {};
+    const haystack = normalizeSearch(
+      [
+        sale.id,
+        sale.external_reference,
+        sale.provider_order_id,
+        sale.provider_payment_id,
+        paymentData.transaction_id,
+        paymentData.provider_order_id,
+        paymentData.provider_terminal_id,
+        paymentData.card_brand,
+        paymentData.provider_payment_method_id,
+      ].join(' '),
+    );
+    return haystack.includes(search);
+  });
+}
+
+function renderMercadoPagoStatus() {
+  const mp = state.mercadoPago || {};
+  const connection = mp.connection || {};
+  const connected = Boolean(mp.connected);
+  const hasFallbackToken = Boolean(mp.env_access_token_configured);
+
+  els.mercadoPagoStatus.innerHTML = connected
+    ? `
+      <div class="status-heading">
+        <span class="status-dot ok"></span>
+        <div>
+          <strong>Mercado Pago conectado</strong>
+          <span>Conta ${escapeHtml(connection.mercado_pago_user_id || 'vinculada por OAuth')}</span>
+        </div>
+      </div>
+      <dl class="detail-list">
+        <div><dt>Escopo</dt><dd>${escapeHtml(connection.scope || 'Nao informado')}</dd></div>
+        <div><dt>Conectado em</dt><dd>${escapeHtml(formatDateTime(connection.connected_at))}</dd></div>
+      </dl>
+    `
+    : `
+      <div class="status-heading">
+        <span class="status-dot ${hasFallbackToken ? 'warning' : ''}"></span>
+        <div>
+          <strong>Mercado Pago nao conectado</strong>
+          <span>${hasFallbackToken ? 'Ha um Access Token configurado no servidor.' : 'Conecte sua conta pelo OAuth oficial.'}</span>
+        </div>
+      </div>
+    `;
+
+  els.connectMercadoPagoButton.hidden = connected;
+  els.disconnectMercadoPagoButton.hidden = !connected;
+  renderTerminals(mp.terminals || [], mp.active_terminal || null);
+}
+
+function renderConnectionSummary() {
+  const mp = state.mercadoPago || {};
+  const connected = Boolean(mp.connected || mp.env_access_token_configured);
+  const active = mp.active_terminal;
+
+  els.dashboardConnectionSummary.innerHTML = `
+    <div class="connection-line">
+      <span class="status-dot ${connected ? 'ok' : ''}"></span>
+      <div>
+        <strong>Mercado Pago</strong>
+        <span>${connected ? 'Conectado' : 'Nao conectado'}</span>
+      </div>
+    </div>
+    <div class="connection-line">
+      <span class="status-dot ${active ? 'ok' : 'warning'}"></span>
+      <div>
+        <strong>Point Smart</strong>
+        <span>${active ? escapeHtml(active.nickname || active.mercado_pago_terminal_id) : 'Nenhum terminal ativo'}</span>
+      </div>
+    </div>
+    <div class="connection-note">Webhook: https://big-lanche.onrender.com/api/mercadopago/webhook</div>
+  `;
+}
+
+function renderTerminals(terminals, activeTerminal) {
+  const activeId = activeTerminal?.mercado_pago_terminal_id || null;
+
+  els.currentTerminalCard.innerHTML = activeTerminal
+    ? `
+      <div class="terminal-title">
+        <span class="status-dot ok"></span>
+        <div>
+          <strong>${escapeHtml(activeTerminal.nickname || 'Point Smart')}</strong>
+          <span>${escapeHtml(activeTerminal.mercado_pago_terminal_id)}</span>
+        </div>
+      </div>
+      <dl class="detail-list">
+        <div><dt>Modo</dt><dd>${escapeHtml(activeTerminal.operating_mode || 'Nao informado')}</dd></div>
+        <div><dt>Loja</dt><dd>${escapeHtml(activeTerminal.store_id || '-')}</dd></div>
+        <div><dt>Caixa</dt><dd>${escapeHtml(activeTerminal.pos_id || activeTerminal.external_pos_id || '-')}</dd></div>
+      </dl>
+    `
+    : `
+      <div class="empty-state left">
+        <strong>Nenhuma Point ativa.</strong>
+        <span>Sincronize os terminais da conta Mercado Pago e escolha a Point principal.</span>
+      </div>
+    `;
+
+  els.terminalsList.innerHTML = terminals.length
+    ? terminals
+        .map((terminal) => {
+          const terminalId = terminal.mercado_pago_terminal_id;
+          const isActive = activeId && terminalId === activeId;
+          return `
+            <article class="terminal-row">
+              <div>
+                <strong>${escapeHtml(terminal.nickname || 'Point Smart')}</strong>
+                <span>${escapeHtml(terminalId)}</span>
+                <small>Modo: ${escapeHtml(terminal.operating_mode || 'Nao informado')}</small>
+              </div>
+              <button class="${isActive ? 'secondary-button' : 'ghost-button'} small" type="button" data-terminal-id="${escapeHtml(terminalId)}">
+                ${isActive ? 'Ativa' : 'Usar'}
+              </button>
+            </article>
+          `;
+        })
+        .join('')
+    : '<div class="empty-state"><strong>Nenhum terminal sincronizado.</strong><span>Clique em sincronizar para consultar a conta Mercado Pago.</span></div>';
+
+  els.terminalsList.querySelectorAll('[data-terminal-id]').forEach((button) => {
+    button.addEventListener('click', () => setActiveTerminal(button.dataset.terminalId));
+  });
+}
+
+function renderCashSummary(summary = {}) {
+  const entries = [
+    ['Faturamento bruto', summary.gross_revenue_cents || 0],
+    ['Cartao', summary.card_cents || 0],
+    ['Pix', summary.pix_cents || 0],
+    ['Dinheiro', summary.cash_cents || 0],
+    ['Total recebido', summary.total_received_cents || 0],
+    ['Total cancelado', summary.total_cancelled_cents || 0],
+    ['Total estornado', summary.total_refunded_cents || 0],
+  ];
+
+  els.cashSummary.innerHTML = entries
+    .map(
+      ([label, value]) => `
+        <div class="cash-box">
+          <span>${escapeHtml(label)}</span>
+          <strong>${currency.format(value / 100)}</strong>
+        </div>
+      `,
+    )
     .join('');
 }
 
-async function closeCashRegister() {
-  const current = await api('/api/cash-registers/current');
-  await api(`/api/cash-registers/${current.cash_register.id}/close`, { method: 'POST' });
-  showToast('Caixa fechado.');
-  await loadCashSummary();
-}
-
-async function saveTerminal() {
-  try {
-    const providerTerminalId = els.terminalIdInput.value.trim();
-    const { terminal } = await api('/api/terminals', {
-      method: 'POST',
-      body: { provider_terminal_id: providerTerminalId },
-    });
-    state.config = {
-      ...state.config,
-      terminal_configured: terminal.configured,
-      terminal_id: terminal.provider_terminal_id,
-    };
-    renderCurrentTerminal();
-    updateSidebarTerminalState();
-    renderPaymentButtons();
-    await loadLocalTerminals();
-    showToast('Maquininha salva.');
-  } catch (error) {
-    showToast(error.message);
-  }
-}
-
-async function setupActiveTerminalPdv() {
-  const providerTerminalId = els.terminalIdInput.value.trim();
-  if (!providerTerminalId) {
-    showToast('Informe o ID da maquininha.');
-    return;
-  }
-
-  try {
-    await api(`/api/terminals/${encodeURIComponent(providerTerminalId)}/mode`, {
-      method: 'PATCH',
-      body: { operating_mode: 'PDV' },
-    });
-    await loadConfig();
-    await loadLocalTerminals();
-    showToast('Modo PDV solicitado ao Mercado Pago.');
-  } catch (error) {
-    showToast(error.message);
-  }
-}
-
-async function syncTerminals() {
-  try {
-    const { terminals } = await api('/api/terminals?sync=true');
-    renderTerminals(terminals);
-    showToast('Terminais sincronizados.');
-  } catch (error) {
-    showToast(error.message);
-  }
-}
-
-async function loadLocalTerminals() {
-  const { terminals } = await api('/api/terminals');
-  renderTerminals(terminals);
-}
-
-function renderTerminals(terminals) {
-  els.terminalsList.innerHTML = terminals.length
-    ? terminals
+function renderCashMovements(movements) {
+  els.cashMovements.innerHTML = movements.length
+    ? movements
         .map(
-          (terminal) => `
-            <div class="compact-row">
-              <div class="terminal-id">
-                <strong>${escapeHtml(terminal.provider_terminal_id)}</strong>
-                <div class="muted">${terminal.operating_mode || 'Modo nao sincronizado'}</div>
+          (movement) => `
+            <div class="movement-row">
+              <div>
+                <strong>${escapeHtml(movement.type || 'Movimento')}</strong>
+                <span>${escapeHtml(paymentMethodName(movement.payment_method))} • ${escapeHtml(formatTime(movement.created_at))}</span>
               </div>
-              <button class="ghost-button small" data-use-terminal="${escapeHtml(terminal.provider_terminal_id)}">Usar</button>
+              <strong>${currency.format((movement.amount_cents || 0) / 100)}</strong>
             </div>
           `,
         )
         .join('')
-    : '<div class="empty-state">Nenhum terminal salvo.</div>';
+    : '<div class="empty-state"><strong>Sem movimentacoes hoje.</strong><span>O caixa recebe apenas vendas aprovadas.</span></div>';
+}
 
-  els.terminalsList.querySelectorAll('[data-use-terminal]').forEach((button) => {
-    button.addEventListener('click', () => {
-      els.terminalIdInput.value = button.dataset.useTerminal;
-      saveTerminal();
-    });
+function renderUser() {
+  const user = state.user || {};
+  const firstName = String(user.name || 'operador').trim().split(/\s+/)[0] || 'operador';
+  els.userFirstName.textContent = firstName;
+  els.accountName.textContent = user.name || 'Usuario';
+  els.accountEmail.textContent = user.email || '';
+  els.accountAvatar.textContent = initials(user.name || user.email || 'BL');
+  els.accountVerified.textContent = user.email_verified ? 'E-mail verificado' : 'E-mail pendente';
+  els.accountVerified.className = `pill ${user.email_verified ? 'ok' : 'warning'}`;
+}
+
+function renderPasswordStrength() {
+  const password = els.registerPasswordInput?.value || '';
+  const rules = {
+    length: password.length >= 8,
+    uppercase: /[A-Z]/.test(password),
+    number: /\d/.test(password),
+    special: /[^A-Za-z0-9]/.test(password),
+  };
+  const score = Object.values(rules).filter(Boolean).length;
+  els.passwordStrengthBar.style.width = `${score * 25}%`;
+  els.passwordStrengthBar.dataset.score = String(score);
+
+  Object.entries(rules).forEach(([rule, passed]) => {
+    const item = els.passwordRequirements.querySelector(`[data-rule="${rule}"]`);
+    if (item) item.classList.toggle('ok', passed);
   });
+}
+
+function renderLoadingState() {
+  els.metricsGrid.innerHTML = '<div class="skeleton-card"></div><div class="skeleton-card"></div><div class="skeleton-card"></div><div class="skeleton-card"></div>';
+  els.latestSalesList.innerHTML = '<div class="skeleton-line"></div><div class="skeleton-line"></div><div class="skeleton-line"></div>';
+  els.salesList.innerHTML = '<div class="skeleton-line"></div><div class="skeleton-line"></div><div class="skeleton-line"></div>';
+  els.cashSummary.innerHTML = '<div class="skeleton-card"></div><div class="skeleton-card"></div><div class="skeleton-card"></div>';
+  els.cashMovements.innerHTML = '<div class="skeleton-line"></div><div class="skeleton-line"></div>';
+}
+
+async function syncTerminals() {
+  await withButtonLoading(els.syncTerminalsButton, 'Sincronizando...', async () => {
+    try {
+      const { terminals } = await api('/api/mercadopago/sync-terminals', { method: 'POST' });
+      state.mercadoPago = {
+        ...(state.mercadoPago || {}),
+        terminals,
+        active_terminal: terminals.find((terminal) => terminal.active) || null,
+      };
+      renderMercadoPagoStatus();
+      renderConnectionSummary();
+      updateSidebarTerminalState();
+      showToast('Terminais sincronizados.', 'success');
+    } catch (error) {
+      showToast(error.message, 'danger');
+    }
+  });
+}
+
+async function setActiveTerminal(terminalId) {
+  if (!terminalId) return;
+
+  try {
+    const { terminals } = await api('/api/mercadopago/active-terminal', {
+      method: 'POST',
+      body: { mercado_pago_terminal_id: terminalId },
+    });
+    state.mercadoPago = {
+      ...(state.mercadoPago || {}),
+      terminals,
+      active_terminal: terminals.find((terminal) => terminal.active) || null,
+    };
+    renderMercadoPagoStatus();
+    renderConnectionSummary();
+    updateSidebarTerminalState();
+    showToast('Point ativa atualizada.', 'success');
+  } catch (error) {
+    showToast(error.message, 'danger');
+  }
+}
+
+async function testMercadoPagoConnection() {
+  await withButtonLoading(els.testConnectionButton, 'Testando...', async () => {
+    try {
+      await loadMercadoPagoStatus();
+      if (state.mercadoPago?.connected || state.mercadoPago?.env_access_token_configured) {
+        showToast('Conexao Mercado Pago respondendo.', 'success');
+        return;
+      }
+      showToast('Conecte o Mercado Pago para testar a conta.', 'warning');
+    } catch (error) {
+      showToast(error.message, 'danger');
+    }
+  });
+}
+
+async function disconnectMercadoPago() {
+  await withButtonLoading(els.disconnectMercadoPagoButton, 'Desconectando...', async () => {
+    try {
+      await api('/api/mercadopago/disconnect', { method: 'POST' });
+      await loadMercadoPagoStatus();
+      showToast('Mercado Pago desconectado.', 'success');
+    } catch (error) {
+      showToast(error.message, 'danger');
+    }
+  });
+}
+
+async function closeCashRegister() {
+  await withButtonLoading(els.closeCashButton, 'Fechando...', async () => {
+    try {
+      const current = await api('/api/cash-registers/current');
+      await api(`/api/cash-registers/${current.cash_register.id}/close`, { method: 'POST' });
+      await loadCashSummary();
+      showToast('Caixa fechado.', 'success');
+    } catch (error) {
+      showToast(error.message, 'danger');
+    }
+  });
+}
+
+function showAuthView(view, { push = false } = {}) {
+  stopPolling();
+  const target = view || 'login';
+  els.authShell.classList.remove('hidden');
+  els.appShell.classList.add('hidden');
+  document.body.classList.add('auth-mode');
+
+  document.querySelectorAll('.auth-view').forEach((section) => {
+    section.classList.toggle('active', section.id === `auth-${target}`);
+  });
+
+  if (push) history.pushState({}, '', routes[target] || routes.login);
+}
+
+function showAppView(view, { push = false } = {}) {
+  const target = view || 'dashboard';
+  els.authShell.classList.add('hidden');
+  els.appShell.classList.remove('hidden');
+  document.body.classList.remove('auth-mode');
+
+  document.querySelectorAll('.nav-button').forEach((button) => {
+    button.classList.toggle('active', button.dataset.view === target);
+  });
+  document.querySelectorAll('.view').forEach((section) => {
+    section.classList.toggle('active', section.id === `view-${target}`);
+  });
+
+  closeSidebar();
+  if (push) history.pushState({}, '', routes[target] || routes.dashboard);
+
+  if (target === 'mercadopago' && state.user) loadMercadoPagoStatus().catch((error) => showToast(error.message, 'danger'));
+  if (target === 'reports' && state.user) loadCashSummary().catch((error) => showToast(error.message, 'danger'));
+}
+
+function openSidebar() {
+  els.sidebar.classList.add('open');
+  els.sidebarBackdrop.classList.remove('hidden');
+}
+
+function closeSidebar() {
+  els.sidebar.classList.remove('open');
+  els.sidebarBackdrop.classList.add('hidden');
+}
+
+function startPolling() {
+  stopPolling();
+  state.pollTimer = setInterval(() => {
+    refreshPrivateData().catch((error) => showToast(error.message, 'danger'));
+  }, 8000);
+}
+
+function stopPolling() {
+  if (state.pollTimer) clearInterval(state.pollTimer);
+  state.pollTimer = null;
+}
+
+function detectNewSales(sales) {
+  const nextIds = new Set(sales.map((sale) => String(sale.id)));
+
+  if (state.salesLoaded) {
+    const newSale = sales.find((sale) => !state.saleIds.has(String(sale.id)));
+    if (newSale) showToast('Nova venda registrada.', 'success');
+  }
+
+  state.saleIds = nextIds;
+  state.salesLoaded = true;
 }
 
 function updateSidebarTerminalState() {
+  const mp = state.mercadoPago || {};
+  const active = mp.active_terminal;
+  const connected = Boolean(mp.connected || mp.env_access_token_configured);
   const dot = els.terminalState.querySelector('.status-dot');
-  dot.classList.toggle('ok', state.config.terminal_configured);
-  els.terminalState.querySelector('span:last-child').textContent = state.config.terminal_configured
-    ? 'Maquininha configurada'
-    : 'Maquininha nao configurada';
+  const label = els.terminalState.querySelector('span:last-child');
+
+  dot.classList.toggle('ok', Boolean(active));
+  dot.classList.toggle('warning', connected && !active);
+  label.textContent = active
+    ? `Point ativa: ${active.nickname || active.mercado_pago_terminal_id}`
+    : connected
+      ? 'Mercado Pago conectado'
+      : 'Mercado Pago nao conectado';
 }
 
-function showPaymentModal({ status, title, message, paymentMethod, amount = 0, transactionId }) {
-  els.paymentModal.classList.remove('hidden');
-  els.paymentStatusIcon.className = `payment-icon ${status}`;
-  els.paymentTitle.textContent = title;
-  els.paymentMessage.textContent = message;
-  els.paymentModeLabel.textContent = paymentMethod === 'PIX' ? 'Pix' : 'Cartao';
-  els.paymentAmount.textContent = currency.format(amount);
-  document.getElementById('cancelPaymentButton').classList.toggle('hidden', status !== 'pending');
-  document.getElementById('newSaleButton').classList.toggle('hidden', status === 'pending');
-  els.transactionLine.classList.toggle('hidden', !transactionId);
-  els.transactionLine.textContent = transactionId ? `Transacao: ${transactionId}` : '';
-}
+async function api(path, options = {}) {
+  const method = String(options.method || 'GET').toUpperCase();
+  const headers = { ...(options.headers || {}) };
+  const unsafe = ['POST', 'PUT', 'PATCH', 'DELETE'].includes(method);
 
-function hidePaymentModal() {
-  els.paymentModal.classList.add('hidden');
-}
+  if (options.body !== undefined) headers['Content-Type'] = 'application/json';
+  if (unsafe) headers['x-csrf-token'] = state.csrfToken || readCookie('big_lanche_csrf') || '';
 
-function switchView(view) {
-  document.querySelectorAll('.nav-button').forEach((button) => {
-    button.classList.toggle('active', button.dataset.view === view);
-  });
-  document.querySelectorAll('.view').forEach((section) => {
-    section.classList.toggle('active', section.id === `view-${view}`);
+  const response = await fetch(path, {
+    method,
+    credentials: 'same-origin',
+    headers,
+    body: options.body !== undefined ? JSON.stringify(options.body) : undefined,
   });
 
-  if (view === 'sales') refreshSalesView().catch((error) => showToast(error.message));
-  if (view === 'cash') loadCashSummary().catch((error) => showToast(error.message));
-}
+  const text = await response.text();
+  const data = text ? safeJson(text) : null;
 
-function getAmountCents() {
-  const raw = els.amountInput.value.trim();
-  if (!raw) return 0;
-
-  const sanitized = raw.replace(/[^\d.,]/g, '');
-  const lastComma = sanitized.lastIndexOf(',');
-  const lastDot = sanitized.lastIndexOf('.');
-  const decimalIndex = Math.max(lastComma, lastDot);
-
-  if (decimalIndex >= 0) {
-    const integerPart = sanitized.slice(0, decimalIndex).replace(/\D/g, '') || '0';
-    const decimalPart = sanitized.slice(decimalIndex + 1).replace(/\D/g, '').padEnd(2, '0').slice(0, 2);
-    return Number.parseInt(integerPart, 10) * 100 + Number.parseInt(decimalPart, 10);
+  if (response.status === 401 && !options.ignoreAuthRedirect) {
+    showAuthView('login', { push: true });
+    throw createClientError(data, 'Sua sessao expirou. Entre novamente.');
   }
 
-  return Number.parseInt(sanitized.replace(/\D/g, '') || '0', 10) * 100;
+  if (!response.ok) throw createClientError(data, 'Falha na comunicacao com o servidor.');
+  return data || {};
 }
 
-function centsToInputValue(cents) {
-  return currency.format(cents / 100).replace('R$', '').trim();
+function createClientError(data, fallback) {
+  const error = new Error(data?.error?.message || data?.message || fallback);
+  error.code = data?.error?.code || data?.code || null;
+  error.details = data?.error?.details || null;
+  return error;
+}
+
+function safeJson(text) {
+  try {
+    return JSON.parse(text);
+  } catch {
+    return {};
+  }
+}
+
+async function withButtonLoading(button, label, task) {
+  if (!button) return task();
+  const originalText = button.textContent;
+  button.disabled = true;
+  button.textContent = label;
+  try {
+    return await task();
+  } finally {
+    button.disabled = false;
+    button.textContent = originalText;
+  }
+}
+
+function togglePassword(button) {
+  const input = document.getElementById(button.dataset.togglePassword);
+  if (!input) return;
+  const show = input.type === 'password';
+  input.type = show ? 'text' : 'password';
+  button.innerHTML = show ? '&times;' : '&#128065;';
+  button.setAttribute('aria-label', show ? 'Ocultar senha' : 'Mostrar senha');
+}
+
+function resolveAuthViewFromPath() {
+  return authViewByPath[window.location.pathname] || 'login';
+}
+
+function resolveAppViewFromPath() {
+  return appViewByPath[window.location.pathname] || 'dashboard';
+}
+
+function paymentLabel(sale) {
+  const payment = sale.payment || {};
+  const type = String(payment.provider_payment_method_type || payment.card_type || '').toLowerCase();
+  const methodId = String(payment.card_brand || payment.provider_payment_method_id || '').toLowerCase();
+  const brand = brandName(methodId);
+
+  if (sale.payment_method === 'PIX' || type.includes('pix') || type === 'qr') return 'Pix';
+  if (type.includes('debit')) return brand ? `Debito • ${brand}` : 'Debito';
+  if (type.includes('credit')) return brand ? `Credito • ${brand}` : 'Credito';
+  if (sale.payment_method === 'CARD') return brand ? `Cartao • ${brand}` : 'Cartao';
+  return sale.payment_method || 'Mercado Pago';
+}
+
+function paymentMethodName(value) {
+  if (value === 'CARD') return 'Cartao';
+  if (value === 'PIX') return 'Pix';
+  if (value === 'CASH') return 'Dinheiro';
+  return value || '-';
+}
+
+function brandName(value) {
+  if (!value) return '';
+  const clean = String(value).replace(/_/g, ' ').trim();
+  const known = {
+    amex: 'Amex',
+    elo: 'Elo',
+    hipercard: 'Hipercard',
+    mastercard: 'Mastercard',
+    visa: 'Visa',
+  };
+  return known[clean] || clean.replace(/\b\w/g, (char) => char.toUpperCase());
 }
 
 function statusLabel(status) {
   return {
-    PENDING: 'Pendente',
-    APPROVED: 'Aprovada',
-    REJECTED: 'Recusada',
-    CANCELLED: 'Cancelada',
-    EXPIRED: 'Expirada',
-    REFUNDED: 'Estornada',
     ACTION_REQUIRED: 'Verificar',
-  }[status] || status;
+    APPROVED: 'Aprovado',
+    CANCELLED: 'Cancelado',
+    EXPIRED: 'Expirado',
+    PENDING: 'Pendente',
+    REFUNDED: 'Estornado',
+    REJECTED: 'Falhou',
+  }[status] || status || '-';
+}
+
+function statusClass(status) {
+  return {
+    ACTION_REQUIRED: 'warning',
+    APPROVED: 'ok',
+    CANCELLED: 'danger',
+    EXPIRED: 'danger',
+    PENDING: 'warning',
+    REFUNDED: 'warning',
+    REJECTED: 'danger',
+  }[status] || '';
+}
+
+function matchesPeriod(value, period) {
+  if (period === 'all') return true;
+  const date = parseDate(value);
+  if (!date) return false;
+
+  const now = new Date();
+  if (period === 'today') {
+    return date.toDateString() === now.toDateString();
+  }
+
+  const days = Number.parseInt(period, 10);
+  if (!Number.isFinite(days)) return true;
+  const start = new Date(now);
+  start.setDate(start.getDate() - days);
+  return date >= start;
+}
+
+function parseDate(value) {
+  if (!value) return null;
+  const date = new Date(String(value).replace(' ', 'T'));
+  return Number.isNaN(date.getTime()) ? null : date;
+}
+
+function formatTime(value) {
+  const date = parseDate(value);
+  if (!date) return '-';
+  return date.toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' });
 }
 
 function formatDateTime(value) {
-  if (!value) return '-';
-  return new Date(value.replace(' ', 'T')).toLocaleString('pt-BR');
+  const date = parseDate(value);
+  if (!date) return '-';
+  return date.toLocaleString('pt-BR', {
+    day: '2-digit',
+    month: '2-digit',
+    year: 'numeric',
+    hour: '2-digit',
+    minute: '2-digit',
+  });
 }
 
-function showToast(message) {
-  els.toast.textContent = message;
-  els.toast.classList.remove('hidden');
-  setTimeout(() => els.toast.classList.add('hidden'), 4200);
+function normalizeEmail(value) {
+  return String(value || '').trim().toLowerCase();
+}
+
+function normalizeSearch(value) {
+  return String(value || '')
+    .trim()
+    .toLowerCase()
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '');
+}
+
+function initials(value) {
+  const words = String(value || 'BL').trim().split(/\s+/).slice(0, 2);
+  return words.map((word) => word[0] || '').join('').toUpperCase() || 'BL';
+}
+
+function readCookie(name) {
+  const prefix = `${name}=`;
+  const cookie = document.cookie.split('; ').find((item) => item.startsWith(prefix));
+  return cookie ? decodeURIComponent(cookie.slice(prefix.length)) : '';
 }
 
 function escapeHtml(value) {
-  return String(value)
+  return String(value ?? '')
     .replaceAll('&', '&amp;')
     .replaceAll('<', '&lt;')
     .replaceAll('>', '&gt;')
     .replaceAll('"', '&quot;')
     .replaceAll("'", '&#039;');
+}
+
+function showToast(message, type = 'success') {
+  els.toast.textContent = message;
+  els.toast.className = `toast ${type}`;
+  window.clearTimeout(showToast.timer);
+  showToast.timer = window.setTimeout(() => {
+    els.toast.classList.add('hidden');
+  }, 4200);
+}
+
+function showFatal(message) {
+  els.authShell?.classList.remove('hidden');
+  els.appShell?.classList.add('hidden');
+  showToast(message || 'Nao foi possivel iniciar o sistema.', 'danger');
 }

@@ -11,16 +11,17 @@ class MercadoPagoProvider {
     this.fetch = fetchImpl;
   }
 
-  async listTerminals({ limit = 50, offset = 0, store_id, pos_id } = {}) {
+  async listTerminals({ limit = 50, offset = 0, store_id, pos_id, accessToken } = {}) {
     const query = new URLSearchParams({ limit: String(limit), offset: String(offset) });
     if (store_id) query.set('store_id', store_id);
     if (pos_id) query.set('pos_id', pos_id);
-    return this.request(`/terminals/v1/list?${query.toString()}`, { method: 'GET' });
+    return this.request(`/terminals/v1/list?${query.toString()}`, { method: 'GET', accessToken });
   }
 
-  async setupTerminalMode(providerTerminalId, operatingMode) {
+  async setupTerminalMode(providerTerminalId, operatingMode, accessToken = null) {
     return this.request('/terminals/v1/setup', {
       method: 'PATCH',
+      accessToken,
       body: {
         terminals: [
           {
@@ -86,8 +87,11 @@ class MercadoPagoProvider {
     });
   }
 
-  async getOrder(orderId) {
-    return this.request(`/v1/orders/${encodeURIComponent(orderId)}`, { method: 'GET' });
+  async getOrder(orderId, options = {}) {
+    return this.request(`/v1/orders/${encodeURIComponent(orderId)}`, {
+      method: 'GET',
+      accessToken: options.accessToken,
+    });
   }
 
   async cancelOrder(orderId, idempotencyKey) {
@@ -129,13 +133,45 @@ class MercadoPagoProvider {
     });
   }
 
-  async request(path, { method = 'GET', body, idempotencyKey } = {}) {
-    this.ensureAccessToken();
+  async exchangeOAuthCode({ code, redirectUri, codeVerifier, testToken = false }) {
+    return this.requestWithoutAccessToken('/oauth/token', {
+      method: 'POST',
+      body: {
+        client_id: this.env.MERCADO_PAGO_CLIENT_ID,
+        client_secret: this.env.MERCADO_PAGO_CLIENT_SECRET,
+        code,
+        grant_type: 'authorization_code',
+        redirect_uri: redirectUri,
+        ...(codeVerifier ? { code_verifier: codeVerifier } : {}),
+        ...(testToken ? { test_token: 'true' } : {}),
+      },
+    });
+  }
+
+  async refreshOAuthToken(refreshToken) {
+    return this.requestWithoutAccessToken('/oauth/token', {
+      method: 'POST',
+      body: {
+        client_id: this.env.MERCADO_PAGO_CLIENT_ID,
+        client_secret: this.env.MERCADO_PAGO_CLIENT_SECRET,
+        refresh_token: refreshToken,
+        grant_type: 'refresh_token',
+      },
+    });
+  }
+
+  async getAuthenticatedUser(accessToken) {
+    return this.request('/users/me', { method: 'GET', accessToken });
+  }
+
+  async request(path, { method = 'GET', body, idempotencyKey, accessToken } = {}) {
+    const token = accessToken || this.env.MERCADO_PAGO_ACCESS_TOKEN;
+    this.ensureAccessToken(token);
 
     const response = await this.fetch(`${this.env.MERCADOPAGO_API_BASE_URL}${path}`, {
       method,
       headers: {
-        Authorization: `Bearer ${this.env.MERCADO_PAGO_ACCESS_TOKEN}`,
+        Authorization: `Bearer ${token}`,
         'Content-Type': 'application/json',
         ...(idempotencyKey ? { 'X-Idempotency-Key': idempotencyKey } : {}),
       },
@@ -157,8 +193,28 @@ class MercadoPagoProvider {
     return data;
   }
 
-  ensureAccessToken() {
-    if (!this.env.MERCADO_PAGO_ACCESS_TOKEN) {
+  async requestWithoutAccessToken(path, { method = 'GET', body } = {}) {
+    const response = await this.fetch(`${this.env.MERCADOPAGO_API_BASE_URL}${path}`, {
+      method,
+      headers: { 'Content-Type': 'application/json' },
+      body: body ? JSON.stringify(body) : undefined,
+    });
+
+    const raw = await response.text();
+    const data = raw ? tryParseJson(raw) : null;
+    if (!response.ok) {
+      throw new MercadoPagoError(
+        data?.message || data?.error || 'Falha na comunicacao com Mercado Pago.',
+        response.status,
+        data?.error || 'MERCADOPAGO_REQUEST_FAILED',
+        data,
+      );
+    }
+    return data;
+  }
+
+  ensureAccessToken(accessToken) {
+    if (!accessToken) {
       throw new AppError(
         'Configure MERCADO_PAGO_ACCESS_TOKEN no backend antes de chamar o Mercado Pago.',
         400,

@@ -1,21 +1,29 @@
 function createSaleController(saleService, paymentService) {
   return {
-    list(req, res) {
-      res.json({ sales: saleService.listSales({ limit: req.query.limit }) });
+    async list(req, res) {
+      res.json({
+        sales: await saleService.listSales({
+          limit: req.query.limit,
+          userId: req.user?.id,
+          status: req.query.status,
+          paymentMethod: req.query.payment_method,
+          search: req.query.search,
+        }),
+      });
     },
 
-    create(req, res) {
-      const sale = saleService.createSale(req.body);
+    async create(req, res) {
+      const sale = await saleService.createSale(req.body, { userId: req.user?.id });
       res.status(201).json({ sale });
     },
 
-    get(req, res) {
-      const sale = saleService.getSale(req.params.id);
+    async get(req, res) {
+      const sale = await saleService.getSale(req.params.id, { userId: req.user?.id });
       res.json({ sale });
     },
 
     async status(req, res) {
-      const sale = await paymentService.syncSalePaymentStatus(req.params.id);
+      const sale = await paymentService.syncSalePaymentStatus(req.params.id, { userId: req.user?.id });
       res.json({ sale });
     },
   };

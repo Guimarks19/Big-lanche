@@ -1,8 +1,13 @@
 const { createApp } = require('./app');
 
-const app = createApp({ seed: true });
-const port = process.env.PORT || app.locals.env.PORT || 3000;
+(async () => {
+  const app = await createApp({ seed: true });
+  const PORT = process.env.PORT || app.locals.env.PORT || 3000;
 
-app.listen(port, () => {
-  console.log(`PDV Mercado Pago rodando na porta ${port}`);
+  app.listen(PORT, () => {
+    console.log(`Big Lanche rodando na porta ${PORT}`);
+  });
+})().catch((error) => {
+  console.error(error);
+  process.exitCode = 1;
 });

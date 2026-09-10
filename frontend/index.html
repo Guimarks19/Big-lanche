@@ -3,171 +3,467 @@
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
-    <title>PDV Mercado Pago Point</title>
+    <meta name="color-scheme" content="light" />
+    <title>Big Lanche | Vendas Mercado Pago</title>
     <link rel="stylesheet" href="/css/styles.css" />
   </head>
   <body>
-    <div class="app-shell">
-      <aside class="sidebar">
-        <div class="brand">
-          <div class="brand-mark">PDV</div>
+    <div class="auth-shell hidden" id="authShell">
+      <section class="auth-brand-panel" aria-label="Big Lanche">
+        <div class="brand-lockup large">
+          <div class="brand-mark">BL</div>
           <div>
             <strong>Big Lanche</strong>
-            <span>Mercado Pago Point</span>
+            <span>Vendas automaticas Mercado Pago</span>
+          </div>
+        </div>
+        <div class="auth-copy">
+          <p class="eyebrow light">Operacao conectada</p>
+          <h1>Sistema inteligente para sua loja.</h1>
+          <p>
+            Acompanhe as vendas reais da Point Smart, com registro automatico,
+            seguranca de sessao e painel pronto para producao.
+          </p>
+        </div>
+        <div class="brand-card-row" aria-hidden="true">
+          <span></span>
+          <span></span>
+          <span></span>
+        </div>
+      </section>
+
+      <main class="auth-main">
+        <section class="auth-card auth-view active" id="auth-login" aria-labelledby="loginTitle">
+          <p class="eyebrow">Acesso seguro</p>
+          <h2 id="loginTitle">Entrar na Big Lanche</h2>
+          <p class="form-copy">Use seu e-mail confirmado para acessar o painel.</p>
+
+          <form class="form-stack" id="loginForm" novalidate>
+            <label class="field-label" for="loginEmailInput">
+              E-mail
+              <input class="text-input" id="loginEmailInput" name="email" type="email" autocomplete="email" required />
+            </label>
+
+            <label class="field-label" for="loginPasswordInput">
+              Senha
+              <span class="password-field">
+                <input
+                  class="text-input"
+                  id="loginPasswordInput"
+                  name="password"
+                  type="password"
+                  autocomplete="current-password"
+                  required
+                />
+                <button class="icon-button" type="button" data-toggle-password="loginPasswordInput" aria-label="Mostrar senha">
+                  &#128065;
+                </button>
+              </span>
+            </label>
+
+            <button class="primary-button full" type="submit">Entrar</button>
+          </form>
+
+          <div class="auth-links">
+            <button class="link-button" type="button" data-auth-view="forgot">Esqueci minha senha</button>
+            <span></span>
+            <button class="link-button" type="button" data-auth-view="register">Criar conta</button>
+          </div>
+        </section>
+
+        <section class="auth-card auth-view" id="auth-register" aria-labelledby="registerTitle">
+          <p class="eyebrow">Nova conta</p>
+          <h2 id="registerTitle">Cadastro</h2>
+          <p class="form-copy">Crie o acesso do responsavel pela operacao.</p>
+
+          <form class="form-stack" id="registerForm" novalidate>
+            <label class="field-label" for="registerNameInput">
+              Nome
+              <input class="text-input" id="registerNameInput" name="name" type="text" autocomplete="name" required />
+            </label>
+
+            <label class="field-label" for="registerEmailInput">
+              E-mail
+              <input class="text-input" id="registerEmailInput" name="email" type="email" autocomplete="email" required />
+            </label>
+
+            <label class="field-label" for="registerPasswordInput">
+              Senha
+              <span class="password-field">
+                <input
+                  class="text-input"
+                  id="registerPasswordInput"
+                  name="password"
+                  type="password"
+                  autocomplete="new-password"
+                  required
+                />
+                <button class="icon-button" type="button" data-toggle-password="registerPasswordInput" aria-label="Mostrar senha">
+                  &#128065;
+                </button>
+              </span>
+            </label>
+
+            <div class="password-meter" aria-live="polite">
+              <div class="meter-track"><span id="passwordStrengthBar"></span></div>
+              <ul class="password-rules" id="passwordRequirements">
+                <li data-rule="length">8 caracteres</li>
+                <li data-rule="uppercase">uma letra maiuscula</li>
+                <li data-rule="number">um numero</li>
+                <li data-rule="special">um caractere especial</li>
+              </ul>
+            </div>
+
+            <label class="field-label" for="registerPasswordConfirmInput">
+              Confirmar senha
+              <input
+                class="text-input"
+                id="registerPasswordConfirmInput"
+                name="password_confirmation"
+                type="password"
+                autocomplete="new-password"
+                required
+              />
+            </label>
+
+            <button class="primary-button full" type="submit">Cadastrar</button>
+          </form>
+
+          <div class="auth-links single">
+            <button class="link-button" type="button" data-auth-view="login">Ja tenho conta</button>
+          </div>
+        </section>
+
+        <section class="auth-card auth-view" id="auth-verify" aria-labelledby="verifyTitle">
+          <div class="mail-icon" aria-hidden="true">&#9993;</div>
+          <p class="eyebrow">Confirmacao</p>
+          <h2 id="verifyTitle">Verifique seu e-mail</h2>
+          <p class="form-copy" id="verificationMessage">
+            Enviamos um link de confirmacao para o endereco informado.
+          </p>
+
+          <label class="field-label" for="verificationEmailInput">
+            E-mail para reenviar
+            <input class="text-input" id="verificationEmailInput" type="email" autocomplete="email" />
+          </label>
+
+          <div class="inline-actions">
+            <button class="secondary-button" id="resendVerificationButton" type="button">Reenviar e-mail</button>
+            <button class="ghost-button" type="button" data-auth-view="login">Voltar ao login</button>
+          </div>
+        </section>
+
+        <section class="auth-card auth-view" id="auth-forgot" aria-labelledby="forgotTitle">
+          <p class="eyebrow">Recuperacao</p>
+          <h2 id="forgotTitle">Esqueci minha senha</h2>
+          <p class="form-copy">Enviaremos instrucoes se o e-mail estiver cadastrado e verificado.</p>
+
+          <form class="form-stack" id="forgotPasswordForm" novalidate>
+            <label class="field-label" for="forgotEmailInput">
+              E-mail
+              <input class="text-input" id="forgotEmailInput" name="email" type="email" autocomplete="email" required />
+            </label>
+            <button class="primary-button full" type="submit">Enviar instrucoes</button>
+          </form>
+
+          <div class="auth-links single">
+            <button class="link-button" type="button" data-auth-view="login">Voltar ao login</button>
+          </div>
+        </section>
+
+        <section class="auth-card auth-view" id="auth-reset" aria-labelledby="resetTitle">
+          <p class="eyebrow">Nova senha</p>
+          <h2 id="resetTitle">Redefinir senha</h2>
+          <p class="form-copy">Informe uma senha forte para proteger sua conta.</p>
+
+          <form class="form-stack" id="resetPasswordForm" novalidate>
+            <label class="field-label" for="resetPasswordInput">
+              Nova senha
+              <input class="text-input" id="resetPasswordInput" name="password" type="password" autocomplete="new-password" required />
+            </label>
+            <label class="field-label" for="resetPasswordConfirmInput">
+              Confirmar nova senha
+              <input
+                class="text-input"
+                id="resetPasswordConfirmInput"
+                name="password_confirmation"
+                type="password"
+                autocomplete="new-password"
+                required
+              />
+            </label>
+            <button class="primary-button full" type="submit">Redefinir senha</button>
+          </form>
+        </section>
+      </main>
+    </div>
+
+    <div class="app-shell hidden" id="appShell">
+      <div class="mobile-topbar">
+        <button class="icon-button menu-button" id="sidebarToggle" type="button" aria-label="Abrir menu">
+          menu
+        </button>
+        <div class="brand-lockup compact">
+          <div class="brand-mark">BL</div>
+          <strong>Big Lanche</strong>
+        </div>
+      </div>
+
+      <div class="sidebar-backdrop hidden" id="sidebarBackdrop"></div>
+
+      <aside class="sidebar" id="sidebar">
+        <div class="brand-lockup">
+          <div class="brand-mark">BL</div>
+          <div>
+            <strong>Big Lanche</strong>
+            <span>Operacao automatica</span>
           </div>
         </div>
 
         <nav class="nav-tabs" aria-label="Navegacao principal">
-          <button class="nav-button active" data-view="pos">Vendas</button>
-          <button class="nav-button" data-view="sales">Historico</button>
-          <button class="nav-button" data-view="cash">Caixa</button>
+          <button class="nav-button active" type="button" data-view="dashboard">
+            <span aria-hidden="true">&#8962;</span> Dashboard
+          </button>
+          <button class="nav-button" type="button" data-view="sales">
+            <span aria-hidden="true">&#128176;</span> Vendas
+          </button>
+          <button class="nav-button" type="button" data-view="reports">
+            <span aria-hidden="true">&#128200;</span> Relatorios
+          </button>
+          <button class="nav-button" type="button" data-view="mercadopago">
+            <span aria-hidden="true">&#128179;</span> Mercado Pago
+          </button>
+          <button class="nav-button" type="button" data-view="settings">
+            <span aria-hidden="true">&#9881;</span> Configuracoes
+          </button>
+          <button class="nav-button" type="button" data-view="account">
+            <span aria-hidden="true">&#128100;</span> Minha conta
+          </button>
         </nav>
 
         <div class="terminal-state" id="terminalState">
           <span class="status-dot"></span>
-          <span>Carregando terminal</span>
+          <span>Consultando Mercado Pago</span>
         </div>
       </aside>
 
       <main class="main">
-        <section class="view active" id="view-pos">
-          <header class="page-header">
+        <section class="view active" id="view-dashboard" aria-labelledby="dashboardTitle">
+          <header class="page-header dashboard-hero">
             <div>
-              <p class="eyebrow">PDV</p>
-              <h1>Vendas</h1>
+              <p class="eyebrow">Painel</p>
+              <h1 id="dashboardTitle">Ola, <span id="userFirstName">operador</span> <span aria-hidden="true">&#128075;</span></h1>
+              <p id="welcomeSubtitle">Bem-vindo de volta a Big Lanche.</p>
             </div>
+            <button class="ghost-button" id="refreshSalesButton" type="button">Atualizar</button>
           </header>
 
-          <div class="quick-sale-grid">
-            <section class="panel quick-payment-panel">
-              <h2>Valor da venda</h2>
-              <label class="amount-entry" for="saleAmountInput">
-                <span>R$</span>
-                <input id="saleAmountInput" type="text" inputmode="decimal" autocomplete="off" placeholder="0,00" />
-              </label>
+          <div class="metrics-grid" id="metricsGrid" aria-live="polite">
+            <div class="skeleton-card"></div>
+            <div class="skeleton-card"></div>
+            <div class="skeleton-card"></div>
+            <div class="skeleton-card"></div>
+          </div>
 
-              <div class="quick-values">
-                <button data-quick-amount="500">R$ 5</button>
-                <button data-quick-amount="1000">R$ 10</button>
-                <button data-quick-amount="1500">R$ 15</button>
-                <button data-quick-amount="2000">R$ 20</button>
-                <button data-quick-amount="5000">R$ 50</button>
-                <button data-quick-amount="10000">R$ 100</button>
+          <div class="dashboard-grid">
+            <section class="panel">
+              <div class="section-header">
+                <div>
+                  <p class="eyebrow">Agora</p>
+                  <h2>Ultimas vendas</h2>
+                </div>
+                <button class="ghost-button small" type="button" data-view-target="sales">Ver todas</button>
               </div>
-
-              <div class="payment-actions">
-                <button class="primary-button" id="cardPaymentButton">Cartao</button>
-                <button class="secondary-button" id="pixPaymentButton">Pix</button>
-              </div>
+              <div class="compact-list" id="latestSalesList"></div>
             </section>
 
-            <section class="panel terminal-panel">
-              <div class="section-header compact-header">
-                <h2>Credenciais Mercado Pago</h2>
-                <button class="ghost-button small" id="reloadCredentialsButton">Atualizar</button>
+            <section class="panel brand-panel">
+              <div class="section-header">
+                <div>
+                  <p class="eyebrow light">Mercado Pago</p>
+                  <h2>Conexao Point</h2>
+                </div>
               </div>
-              <div class="credential-status" id="credentialStatus"></div>
-              <div class="credential-grid">
-                <label class="field-label" for="publicKeyInput">
-                  Public Key
-                  <input class="text-input" id="publicKeyInput" type="text" autocomplete="off" placeholder="APP_USR-..." />
-                </label>
-                <label class="field-label" for="accessTokenInput">
-                  Access Token
-                  <input class="text-input" id="accessTokenInput" type="password" autocomplete="new-password" placeholder="APP_USR-..." />
-                </label>
-                <label class="field-label" for="clientIdInput">
-                  Client ID
-                  <input class="text-input" id="clientIdInput" type="text" autocomplete="off" />
-                </label>
-                <label class="field-label" for="clientSecretInput">
-                  Client Secret
-                  <input class="text-input" id="clientSecretInput" type="password" autocomplete="new-password" />
-                </label>
-                <label class="field-label full-row" for="webhookSecretInput">
-                  Webhook Secret
-                  <input class="text-input" id="webhookSecretInput" type="password" autocomplete="new-password" />
-                </label>
-              </div>
-              <button class="primary-button" id="saveCredentialsButton">Salvar credenciais</button>
-
-              <h2>Point Smart</h2>
-              <div class="terminal-card" id="currentTerminalCard"></div>
-              <label class="field-label" for="terminalIdInput">ID da maquininha</label>
-              <input class="text-input" id="terminalIdInput" type="text" autocomplete="off" placeholder="NEWLAND_N950__SERIAL" />
-              <div class="terminal-actions">
-                <button class="primary-button" id="saveTerminalButton">Salvar</button>
-                <button class="secondary-button" id="setupPdvButton">Ativar PDV</button>
-              </div>
-              <div class="section-header compact-header">
-                <h2>Terminais da conta</h2>
-                <button class="ghost-button" id="syncTerminalsButton">Sincronizar</button>
-              </div>
-              <div class="compact-list" id="terminalsList"></div>
-              <div class="last-sale" id="lastSale">
-                <span>Nenhuma transacao nesta sessao.</span>
-              </div>
+              <div class="connection-summary" id="dashboardConnectionSummary"></div>
             </section>
           </div>
         </section>
 
-        <section class="view" id="view-sales">
+        <section class="view" id="view-sales" aria-labelledby="salesTitle">
           <header class="page-header">
             <div>
-              <p class="eyebrow">Controle</p>
-              <h1>Vendas</h1>
+              <p class="eyebrow">Monitoramento</p>
+              <h1 id="salesTitle">Vendas automaticas</h1>
+              <p>Quando uma nova venda cair no Mercado Pago, ela aparece aqui.</p>
             </div>
-            <button class="ghost-button" id="refreshSalesButton">Atualizar</button>
           </header>
 
-          <div class="metrics-grid" id="metricsGrid"></div>
+          <section class="panel filters-panel" aria-label="Filtros de vendas">
+            <label class="field-label" for="salesSearchInput">
+              Buscar venda
+              <input class="text-input" id="salesSearchInput" type="search" placeholder="Order, transacao ou referencia" />
+            </label>
+            <label class="field-label" for="salesPeriodFilter">
+              Periodo
+              <select class="text-input" id="salesPeriodFilter">
+                <option value="today">Hoje</option>
+                <option value="7">Ultimos 7 dias</option>
+                <option value="30">Ultimos 30 dias</option>
+                <option value="all">Tudo</option>
+              </select>
+            </label>
+            <label class="field-label" for="salesStatusFilter">
+              Status
+              <select class="text-input" id="salesStatusFilter">
+                <option value="">Todos</option>
+                <option value="APPROVED">Aprovadas</option>
+                <option value="REJECTED">Recusadas</option>
+                <option value="CANCELLED">Canceladas</option>
+                <option value="REFUNDED">Estornadas</option>
+                <option value="EXPIRED">Expiradas</option>
+              </select>
+            </label>
+            <label class="field-label" for="salesPaymentFilter">
+              Forma
+              <select class="text-input" id="salesPaymentFilter">
+                <option value="">Todas</option>
+                <option value="CARD">Cartao</option>
+                <option value="PIX">Pix</option>
+              </select>
+            </label>
+            <label class="field-label" for="salesMinAmountInput">
+              Valor minimo
+              <input class="text-input" id="salesMinAmountInput" type="number" min="0" step="0.01" placeholder="0,00" />
+            </label>
+          </section>
+
+          <section class="panel">
+            <div class="section-header">
+              <div>
+                <p class="eyebrow">Hoje</p>
+                <h2>Historico recebido</h2>
+              </div>
+            </div>
+            <div class="compact-list sales-feed" id="salesList"></div>
+          </section>
+        </section>
+
+        <section class="view" id="view-reports" aria-labelledby="reportsTitle">
+          <header class="page-header">
+            <div>
+              <p class="eyebrow">Fechamento</p>
+              <h1 id="reportsTitle">Relatorios e caixa</h1>
+              <p>Somente vendas aprovadas entram no faturamento.</p>
+            </div>
+            <button class="primary-button small" id="closeCashButton" type="button">Fechar caixa</button>
+          </header>
 
           <div class="dashboard-grid">
             <section class="panel">
-              <h2>Historico de vendas</h2>
-              <div class="compact-list" id="salesList"></div>
+              <div class="section-header">
+                <div>
+                  <p class="eyebrow">Resumo</p>
+                  <h2>Caixa atual</h2>
+                </div>
+              </div>
+              <div class="cash-summary" id="cashSummary"></div>
             </section>
 
             <section class="panel">
-              <h2>Movimentacoes do caixa</h2>
+              <div class="section-header">
+                <div>
+                  <p class="eyebrow">Lancamentos</p>
+                  <h2>Movimentacoes</h2>
+                </div>
+              </div>
               <div class="compact-list" id="cashMovements"></div>
             </section>
           </div>
         </section>
 
-        <section class="view" id="view-cash">
+        <section class="view" id="view-mercadopago" aria-labelledby="mercadoPagoTitle">
           <header class="page-header">
             <div>
-              <p class="eyebrow">Fechamento</p>
-              <h1>Caixa</h1>
+              <p class="eyebrow">Integracao</p>
+              <h1 id="mercadoPagoTitle">Mercado Pago</h1>
+              <p>Gerencie sua conexao com a Point.</p>
             </div>
-            <button class="primary-button small" id="closeCashButton">Fechar caixa</button>
+          </header>
+
+          <div class="settings-grid">
+            <section class="panel">
+              <div class="section-header">
+                <div>
+                  <p class="eyebrow">Conta</p>
+                  <h2>Status da conexao</h2>
+                </div>
+              </div>
+              <div class="integration-card" id="mercadoPagoStatus"></div>
+              <div class="inline-actions">
+                <button class="primary-button" id="connectMercadoPagoButton" type="button">Conectar Mercado Pago</button>
+                <button class="ghost-button" id="testConnectionButton" type="button">Testar conexao</button>
+                <button class="danger-button" id="disconnectMercadoPagoButton" type="button">Desconectar</button>
+              </div>
+            </section>
+
+            <section class="panel">
+              <div class="section-header">
+                <div>
+                  <p class="eyebrow">Point Smart</p>
+                  <h2>Terminal vinculado</h2>
+                </div>
+                <button class="ghost-button small" id="syncTerminalsButton" type="button">Sincronizar</button>
+              </div>
+              <div class="terminal-card" id="currentTerminalCard"></div>
+              <div class="compact-list terminals-list" id="terminalsList"></div>
+            </section>
+          </div>
+        </section>
+
+        <section class="view" id="view-settings" aria-labelledby="settingsTitle">
+          <header class="page-header">
+            <div>
+              <p class="eyebrow">Preferencias</p>
+              <h1 id="settingsTitle">Configuracoes</h1>
+              <p>As credenciais sensiveis ficam somente no backend e no Render.</p>
+            </div>
           </header>
 
           <section class="panel">
-            <div class="cash-summary" id="cashSummary"></div>
+            <div class="empty-state left">
+              <strong>Configuracao protegida</strong>
+              <span>
+                Client Secret, Access Token e tokens OAuth nao sao exibidos aqui.
+                Altere esses valores no Render ou conecte a conta pelo OAuth oficial.
+              </span>
+            </div>
           </section>
         </section>
 
+        <section class="view" id="view-account" aria-labelledby="accountTitle">
+          <header class="page-header">
+            <div>
+              <p class="eyebrow">Perfil</p>
+              <h1 id="accountTitle">Minha conta</h1>
+            </div>
+            <button class="ghost-button" id="logoutButton" type="button">Sair</button>
+          </header>
+
+          <section class="panel account-panel">
+            <div class="account-avatar" id="accountAvatar">BL</div>
+            <div>
+              <h2 id="accountName">Usuario</h2>
+              <p id="accountEmail">email@exemplo.com</p>
+              <span class="pill ok" id="accountVerified">E-mail verificado</span>
+            </div>
+          </section>
+        </section>
       </main>
     </div>
 
-    <div class="modal hidden" id="paymentModal" role="dialog" aria-modal="true">
-      <div class="modal-card">
-        <div id="paymentStatusIcon" class="payment-icon pending"></div>
-        <p class="eyebrow" id="paymentModeLabel">Pagamento</p>
-          <h2 id="paymentTitle">Pagamento em andamento</h2>
-        <strong class="payment-amount" id="paymentAmount">R$ 0,00</strong>
-        <p class="payment-message" id="paymentMessage">Aguardando pagamento na Point Smart...</p>
-        <p class="transaction-line hidden" id="transactionLine"></p>
-        <div class="modal-actions">
-          <button class="ghost-button" id="cancelPaymentButton">Cancelar</button>
-          <button class="primary-button hidden" id="newSaleButton">Novo pedido</button>
-        </div>
-      </div>
+    <div class="toast-region" id="toastRegion" aria-live="polite" aria-atomic="true">
+      <div class="toast hidden" id="toast"></div>
     </div>
-
-    <div class="toast hidden" id="toast"></div>
 
     <script src="/js/app.js"></script>
   </body>

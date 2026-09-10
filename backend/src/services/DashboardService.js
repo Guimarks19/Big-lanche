@@ -6,8 +6,15 @@ class DashboardService {
     this.cashRegisterService = cashRegisterService;
   }
 
-  getDashboard() {
-    const today = get(
+  async getDashboard(userId = null) {
+    const { start, end } = getTodayRange();
+    const userClause = userId ? ' AND user_id = ?' : ' AND user_id IS NULL';
+    const userParams = userId ? [userId] : [];
+    const createdAt = this.db.dialect === 'sqlite' ? 'datetime(created_at)' : 'created_at';
+    const startValue = this.db.dialect === 'sqlite' ? 'datetime(?)' : '?';
+    const endValue = this.db.dialect === 'sqlite' ? 'datetime(?)' : '?';
+
+    const today = await get(
       this.db,
       `SELECT
          COUNT(*) AS sales_count,
@@ -19,16 +26,18 @@ class DashboardService {
          SUM(CASE WHEN status = 'APPROVED' AND payment_method = 'CARD' THEN total_cents ELSE 0 END) AS card_cents,
          SUM(CASE WHEN status = 'APPROVED' AND payment_method = 'PIX' THEN total_cents ELSE 0 END) AS pix_cents
        FROM sales
-       WHERE date(created_at, 'localtime') = date('now', 'localtime')`,
+       WHERE ${createdAt} >= ${startValue} AND ${createdAt} < ${endValue}${userClause}`,
+      [start, end, ...userParams],
     );
 
-    const cashMovements = all(
+    const cashMovements = await all(
       this.db,
       `SELECT *
        FROM cash_movements
-       WHERE date(created_at, 'localtime') = date('now', 'localtime')
+       WHERE ${createdAt} >= ${startValue} AND ${createdAt} < ${endValue}${userClause}
        ORDER BY created_at DESC, id DESC
        LIMIT 30`,
+      [start, end, ...userParams],
     );
 
     const approvedCount = today.approved_sales || 0;
@@ -43,10 +52,22 @@ class DashboardService {
       card_cents: today.card_cents || 0,
       pix_cents: today.pix_cents || 0,
       average_ticket_cents: approvedCount > 0 ? Math.round((today.revenue_cents || 0) / approvedCount) : 0,
-      current_cash_register: this.cashRegisterService.getCurrent(),
+      current_cash_register: await this.cashRegisterService.getCurrent(userId),
       cash_movements: cashMovements,
     };
   }
+}
+
+function getTodayRange() {
+  const now = new Date();
+  const start = new Date(now);
+  start.setHours(0, 0, 0, 0);
+  const end = new Date(start);
+  end.setDate(end.getDate() + 1);
+  return {
+    start: start.toISOString(),
+    end: end.toISOString(),
+  };
 }
 
 module.exports = { DashboardService };

@@ -1,5 +1,5 @@
 const { randomUUID } = require('node:crypto');
-const { all, get, run, withTransaction } = require('../database/connection');
+const { all, get, insert, run, withTransaction } = require('../database/connection');
 const { AppError } = require('../utils/errors');
 const { decimalToCents } = require('../utils/money');
 const { buildSaleExternalReference } = require('./MercadoPagoProvider');
@@ -10,72 +10,102 @@ class SaleService {
     this.cashRegisterService = cashRegisterService;
   }
 
-  createSale(input) {
+  async createSale(input, context = {}) {
     const paymentMethod = normalizePaymentMethod(input.payment_method);
     const totalCents = normalizeAmountCents(input);
 
-    return withTransaction(this.db, () => {
-      const cashRegister = this.cashRegisterService.ensureOpen();
+    let createdSaleId;
+    await withTransaction(this.db, async (tx) => {
+      const cashRegister = await this.cashRegisterService.ensureOpen(context.userId, tx);
       const temporaryExternalReference = `SALE_${randomUUID().replace(/-/g, '').slice(0, 24)}`;
       const idempotencyKey = randomUUID();
 
-      const saleResult = run(
-        this.db,
+      const saleId = await insert(
+        tx,
         `INSERT INTO sales
-         (total_cents, status, payment_method, external_reference, idempotency_key, cash_register_id)
-         VALUES (?, 'PENDING', ?, ?, ?, ?)`,
-        [totalCents, paymentMethod, temporaryExternalReference, idempotencyKey, cashRegister.id],
+         (user_id, total_cents, status, payment_method, external_reference, idempotency_key, cash_register_id)
+         VALUES (?, ?, 'PENDING', ?, ?, ?, ?)`,
+        [context.userId || null, totalCents, paymentMethod, temporaryExternalReference, idempotencyKey, cashRegister.id],
       );
 
-      const externalReference = buildSaleExternalReference(saleResult.lastInsertRowid);
-      run(this.db, 'UPDATE sales SET external_reference = ? WHERE id = ?', [
+      const externalReference = buildSaleExternalReference(saleId);
+      await run(tx, 'UPDATE sales SET external_reference = ? WHERE id = ?', [
         externalReference,
-        saleResult.lastInsertRowid,
+        saleId,
       ]);
+      createdSaleId = saleId;
 
-      return this.getSale(saleResult.lastInsertRowid);
     });
+
+    return this.getSale(createdSaleId, context);
   }
 
-  getSale(id) {
-    const sale = get(this.db, 'SELECT * FROM sales WHERE id = ?', [Number(id)]);
+  async getSale(id, context = {}) {
+    const sale = context.userId
+      ? await get(this.db, 'SELECT * FROM sales WHERE id = ? AND user_id = ?', [Number(id), context.userId])
+      : await get(this.db, 'SELECT * FROM sales WHERE id = ?', [Number(id)]);
     if (!sale) throw new AppError('Venda nao encontrada.', 404, 'SALE_NOT_FOUND');
     return this.serializeSale(sale);
   }
 
-  listSales({ limit = 50 } = {}) {
+  async listSales({ limit = 50, userId, status, paymentMethod, search } = {}) {
     const safeLimit = Math.min(Math.max(Number(limit) || 50, 1), 200);
-    return all(
+    const clauses = [];
+    const params = [];
+
+    if (userId) {
+      clauses.push('user_id = ?');
+      params.push(userId);
+    }
+    if (status) {
+      clauses.push('status = ?');
+      params.push(String(status).toUpperCase());
+    }
+    if (paymentMethod) {
+      clauses.push('payment_method = ?');
+      params.push(String(paymentMethod).toUpperCase());
+    }
+    if (search) {
+      clauses.push('(external_reference LIKE ? OR provider_order_id LIKE ? OR provider_payment_id LIKE ?)');
+      const term = `%${String(search).trim()}%`;
+      params.push(term, term, term);
+    }
+
+    const rows = await all(
       this.db,
       `SELECT *
        FROM sales
+       ${clauses.length ? `WHERE ${clauses.join(' AND ')}` : ''}
        ORDER BY created_at DESC, id DESC
        LIMIT ?`,
-      [safeLimit],
-    ).map((sale) => this.serializeSale(sale));
+      [...params, safeLimit],
+    );
+
+    return Promise.all(rows.map((sale) => this.serializeSale(sale)));
   }
 
-  getSaleByProviderOrderId(providerOrderId) {
-    const sale = get(this.db, 'SELECT * FROM sales WHERE provider_order_id = ?', [providerOrderId]);
+  async getSaleByProviderOrderId(providerOrderId) {
+    const sale = await get(this.db, 'SELECT * FROM sales WHERE provider_order_id = ?', [providerOrderId]);
     return sale ? this.serializeSale(sale) : null;
   }
 
-  getSaleByExternalReference(externalReference) {
-    const sale = get(this.db, 'SELECT * FROM sales WHERE external_reference = ?', [externalReference]);
+  async getSaleByExternalReference(externalReference) {
+    const sale = await get(this.db, 'SELECT * FROM sales WHERE external_reference = ?', [externalReference]);
     return sale ? this.serializeSale(sale) : null;
   }
 
-  getPayment(saleId) {
+  async getPayment(saleId) {
     return get(this.db, 'SELECT * FROM payments WHERE sale_id = ? ORDER BY id DESC LIMIT 1', [
       Number(saleId),
     ]);
   }
 
-  serializeSale(row) {
-    const payment = this.getPayment(row.id);
+  async serializeSale(row) {
+    const payment = await this.getPayment(row.id);
 
     return {
       id: row.id,
+      user_id: row.user_id,
       total_cents: row.total_cents,
       total: row.total_cents / 100,
       status: row.status,
@@ -105,6 +135,11 @@ class SaleService {
             provider_terminal_id: payment.provider_terminal_id,
             provider_created_at: payment.provider_created_at,
             provider_updated_at: payment.provider_updated_at,
+            card_brand: payment.card_brand,
+            card_type: payment.card_type,
+            external_reference: payment.external_reference,
+            provider_user_id: payment.provider_user_id,
+            provider_action: payment.provider_action,
             created_at: payment.created_at,
             updated_at: payment.updated_at,
           }

@@ -4,14 +4,14 @@ function createCredentialController(credentialService, terminalService) {
       res.json({ credentials: credentialService.getStatus() });
     },
 
-    save(req, res) {
+    async save(req, res) {
       const credentials = credentialService.save(req.body);
 
       if (req.body?.terminal_id) {
-        terminalService.setActiveTerminal(req.body.terminal_id);
+        await terminalService.setActiveTerminal(req.body.terminal_id, req.user?.id);
       }
 
-      res.json({ credentials, terminal: terminalService.getCurrentTerminal() });
+      res.json({ credentials, terminal: await terminalService.getCurrentTerminal(req.user?.id) });
     },
   };
 }
